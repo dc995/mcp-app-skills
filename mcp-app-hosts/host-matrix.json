@@ -1,0 +1,202 @@
+{
+  "version": "2026-04-05",
+  "hosts": {
+    "vscode": {
+      "name": "VS Code Insiders",
+      "transport": ["http", "streamable-http"],
+      "tls": true,
+      "csp": {
+        "script-src": "'self' 'unsafe-inline'",
+        "unsafe-eval": false,
+        "unsafe-inline": true,
+        "connect-src": "self",
+        "img-src": "permissive",
+        "style-src": "'self' 'unsafe-inline'"
+      },
+      "sandbox": {
+        "microphone": false,
+        "camera": false,
+        "geolocation": false,
+        "clipboard-write": "varies",
+        "allow-same-origin": false
+      },
+      "secure-context": true,
+      "iframe-origin": "vscode-webview://",
+      "features": {
+        "canvas-2d": true,
+        "webgl": true,
+        "web-workers": true,
+        "websockets": true,
+        "fetch-localhost": true,
+        "fetch-external": false,
+        "nested-iframes": false,
+        "eval": false,
+        "new-function": false,
+        "cdn-script-tags": false,
+        "cdn-link-tags": false,
+        "dynamic-import": false
+      },
+      "bundling": {
+        "requires-singlefile": true,
+        "npm-bundled-ok": true,
+        "cdn-external-ok": false,
+        "notes": "vite-plugin-singlefile inlines all JS/CSS into one HTML. External <script src> and <link href> to CDNs are blocked by CSP."
+      },
+      "port-config": {
+        "mcp-json-location": ".vscode/mcp.json",
+        "tls-offset": 1000,
+        "notes": "HTTP on 3xxx, TLS on 4xxx. mcp.json points to TLS ports."
+      },
+      "known-broken-sdks": [
+        "azure-maps-control (CDN + runtime tile fetches)",
+        "google-maps-js-api (CDN + runtime tile fetches)",
+        "mapbox-gl (web workers + eval)",
+        "knockout.js (new Function for bindings)",
+        "angular-1.x (eval-based template compilation)"
+      ],
+      "known-working-sdks": [
+        "leaflet (npm-bundled, img tiles bypass CSP)",
+        "three.js (npm-bundled, data-driven rendering)",
+        "chart.js (npm-bundled, canvas rendering)",
+        "d3 (npm-bundled, svg/canvas)",
+        "lit (npm-bundled, no eval)"
+      ],
+      "last-validated": "2026-04-05"
+    },
+    "apphub": {
+      "name": "AppHub (custom MCP host)",
+      "transport": ["http", "streamable-http"],
+      "tls": true,
+      "csp": {
+        "unsafe-eval": true,
+        "unsafe-inline": true,
+        "connect-src": "*"
+      },
+      "sandbox": {
+        "microphone": true,
+        "camera": true,
+        "geolocation": true,
+        "clipboard-write": true,
+        "allow-same-origin": true
+      },
+      "secure-context": true,
+      "iframe-origin": "about:srcdoc",
+      "features": {
+        "canvas-2d": true,
+        "webgl": true,
+        "web-workers": true,
+        "websockets": true,
+        "fetch-localhost": true,
+        "fetch-external": true,
+        "nested-iframes": true,
+        "eval": true,
+        "new-function": true,
+        "cdn-script-tags": true,
+        "cdn-link-tags": true,
+        "dynamic-import": true
+      },
+      "bundling": {
+        "requires-singlefile": false,
+        "npm-bundled-ok": true,
+        "cdn-external-ok": true,
+        "notes": "Full browser environment. Minimal sandbox. Both bundled and CDN approaches work."
+      },
+      "port-config": {
+        "http-port": 3009,
+        "tls-port": 4009,
+        "notes": "AppHub proxies MCP tool calls to downstream servers on their HTTP ports (3xxx)."
+      },
+      "known-broken-sdks": [],
+      "known-working-sdks": [
+        "All SDKs that work in a standard browser"
+      ],
+      "last-validated": "2026-04-05"
+    },
+    "standalone": {
+      "name": "basic-host (ext-apps reference)",
+      "transport": ["http", "streamable-http"],
+      "tls": false,
+      "csp": {
+        "unsafe-eval": true,
+        "unsafe-inline": true,
+        "connect-src": "*"
+      },
+      "sandbox": {
+        "microphone": true,
+        "camera": true,
+        "geolocation": true,
+        "clipboard-write": true,
+        "allow-same-origin": true
+      },
+      "secure-context": false,
+      "iframe-origin": "about:srcdoc",
+      "features": {
+        "canvas-2d": true,
+        "webgl": true,
+        "web-workers": true,
+        "websockets": true,
+        "fetch-localhost": true,
+        "fetch-external": true,
+        "nested-iframes": true,
+        "eval": true,
+        "new-function": true,
+        "cdn-script-tags": true,
+        "cdn-link-tags": true,
+        "dynamic-import": true
+      },
+      "bundling": {
+        "requires-singlefile": false,
+        "npm-bundled-ok": true,
+        "cdn-external-ok": true,
+        "notes": "Most permissive. HTTP only (localhost:8080). No TLS."
+      },
+      "known-broken-sdks": [],
+      "known-working-sdks": ["All SDKs that work in a standard browser"],
+      "last-validated": "2026-04-05"
+    },
+    "claude": {
+      "name": "Claude.ai",
+      "transport": ["streamable-http"],
+      "tls": true,
+      "csp": {
+        "unsafe-eval": true,
+        "unsafe-inline": true,
+        "connect-src": "unknown"
+      },
+      "sandbox": {
+        "microphone": true,
+        "camera": true,
+        "geolocation": "unknown",
+        "clipboard-write": "unknown"
+      },
+      "secure-context": true,
+      "features": {
+        "canvas-2d": true,
+        "webgl": true,
+        "eval": true,
+        "new-function": true,
+        "fetch-external": "unknown",
+        "cdn-script-tags": "unknown"
+      },
+      "bundling": {
+        "notes": "Stub — validate when testing against Claude.ai"
+      },
+      "last-validated": null
+    },
+    "openai": {
+      "name": "ChatGPT (Apps SDK)",
+      "transport": ["streamable-http"],
+      "tls": true,
+      "csp": {
+        "unsafe-eval": "unknown",
+        "unsafe-inline": "unknown"
+      },
+      "sandbox": {},
+      "features": {},
+      "bundling": {
+        "notes": "Stub — validate when testing against ChatGPT Apps SDK"
+      },
+      "last-validated": null
+    }
+  }
+}
