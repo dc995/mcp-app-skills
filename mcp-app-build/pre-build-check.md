@@ -34,8 +34,8 @@ For each planned feature, check against the host matrix:
 | `<link href="https://cdn...">` | **BLOCKED** | OK | OK |
 | npm-bundled + vite-singlefile | OK | OK | OK |
 
-**If your SDK requires CDN loading (Azure Maps, Google Maps, Mapbox GL):**
-→ **Cannot work in VS Code.** Either: (a) find an npm-bundleable alternative (e.g., Leaflet instead of Azure Maps), or (b) accept VS Code incompatibility and document it.
+**If your SDK's canonical install is a CDN `<script>` tag (hosted map/geo SDKs, vendor visualization SDKs):**
+→ **Likely cannot work in VS Code.** The CDN script is blocked, and many such SDKs *also* fetch assets (tiles, fonts, style JSON) from vendor domains at runtime, which `connect-src` blocks too. Either: (a) find an npm-bundleable equivalent that needs no runtime vendor fetch, (b) proxy the runtime fetches through the server, or (c) accept VS Code incompatibility and document it.
 
 ### External Network Access from UI
 
@@ -55,11 +55,15 @@ For each planned feature, check against the host matrix:
 | Microphone (`getUserMedia`) | **BLOCKED** | OK | OK |
 | Camera (`getUserMedia`) | **BLOCKED** | OK | OK |
 | Geolocation | **BLOCKED** | OK | OK |
+| `window.open()` / popups | **BLOCKED** | OK | OK |
 | Clipboard write | Varies | OK | OK |
 | Web Speech API | **BLOCKED** | OK | OK |
 
 **If your app needs permissions:**
 → Check `HostCapabilities.sandbox.permissions` at runtime. Provide fallback UI (text input instead of mic, manual coords instead of geolocation, file upload instead of camera).
+
+**If your app needs OAuth / sign-in:**
+→ `window.open()` returns `null` in VS Code, so popup-based OAuth fails. Run the whole flow on the **server** (Express `/auth/start` + `/auth/callback` routes; tokens stay server-side) and have the UI poll an app-only `status` tool via `app.callServerTool()`. See the OAuth pattern in [patterns.md](patterns.md) and the workaround in [../mcp-app-hosts/vscode.md](../mcp-app-hosts/vscode.md).
 
 ### Secure Context APIs
 

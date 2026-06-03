@@ -141,3 +141,26 @@ Add to the `$apps` ordered hashtable in `start-all.ps1`:
 ```powershell
 "<AppName>MCPapp" = <HTTP_PORT>
 ```
+
+## Ports, TLS & start-all
+
+Two distinct ports per app, by convention:
+
+| | Port | Used by |
+|---|---|---|
+| HTTP | `3xxx` (e.g. `3013`) | plain dev / `--no-tls` |
+| TLS  | **HTTP + 1000** (e.g. `4013`) | what `.vscode/mcp.json` points at |
+
+- **`mcp.json` uses the `https://localhost:<HTTP+1000>/mcp` URL**, so the server
+  must run **with TLS** for the host to connect. `start-all.ps1` runs TLS by
+  default; certs come from `mkcert` at the repo-root `.certs/` folder
+  (e.g. `.certs/localhost.pem` + `.certs/localhost-key.pem`).
+- Pick the next free HTTP port = (max existing HTTP port) + 1. The TLS port is
+  then automatically that + 1000 — don't hand-pick it.
+- **HTTP transport vs stdio:**
+  - `"type": "http"` apps need a running server process — they belong in
+    `start-all.ps1` and are started by you.
+  - `"type": "stdio"` apps are spawned on demand by the host from `mcp.json`
+    (`command` + `args`) — do **not** add them to `start-all.ps1`.
+- Run everything: `.\start-all.ps1` (TLS on → 4xxx). Flags: `-Force` to
+  kill + restart, `-NoTls` for plain HTTP on 3xxx.

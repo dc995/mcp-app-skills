@@ -29,7 +29,7 @@ Assign a category:
 | Tag | Description | Example |
 |---|---|---|
 | `[CSP]` | eval/Function/inline script blocked | `new Function()` in VS Code |
-| `[CDN]` | External script/style tag blocked | Azure Maps SDK `<script src>` |
+| `[CDN]` | External script/style tag blocked | Vendor SDK `<script src>` from a CDN in VS Code |
 | `[PERMISSION]` | iframe sandbox blocks browser API | `getUserMedia` denied |
 | `[NETWORK]` | fetch to external domain blocked | `connect-src` restriction |
 | `[SECURE-CTX]` | API requires HTTPS / secure context | Translation API, Web Bluetooth |
@@ -98,15 +98,15 @@ The system auto-benefits:
 ## Example HIT Record
 
 ```
-DISCOVER: AzureMapsMCPapp fails in VS Code — blank map, CSP errors in console
+DISCOVER: MapMCPapp fails in VS Code — blank map, CSP errors in console
 CLASSIFY: [CDN] + [NETWORK]
-  - <script src="https://atlas.microsoft.com/sdk/..."> blocked by script-src
-  - Runtime tile fetch to atlas.microsoft.com blocked by connect-src
+  - <script src="https://cdn.vendor.example/sdk/..."> blocked by script-src
+  - Runtime tile fetch to the vendor's domain blocked by connect-src
 RECORD:
   a. host-matrix.json → vscode.features.cdn-script-tags = false (already set)
   b. LESSONS_LEARNED.md → Issue #9 (new entry)
   c. /memories/repo/ → quick note
 PROPAGATE:
   - Pre-build check will warn: "Your app loads external scripts — blocked in VS Code"
-  - SDK compat table updated: azure-maps-control → broken
+  - Pattern compat table updated: CDN-loaded SDK with runtime vendor fetch → broken
 ```

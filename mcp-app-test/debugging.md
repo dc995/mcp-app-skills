@@ -94,3 +94,37 @@ App works first time but breaks on refresh?
   → State management issue
   → Check viewUUID / localStorage lifecycle
 ```
+
+## "fetch failed" on Tool Call (Server-Connection Triage)
+
+A tool call that returns `fetch failed` is a **transport** problem, not an app bug.
+The host usually cached a failed connection from when the server was down; starting
+the server afterward doesn't clear it.
+
+### Step 1 — Is the server actually up and healthy?
+
+Verify independently of the host (TLS port = HTTP port + 1000):
+
+```powershell
+Invoke-WebRequest -Uri 'https://localhost:<TLS_PORT>/mcp' -Method POST `
+  -Body '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' `
+  -ContentType 'application/json' `
+  -Headers @{Accept='application/json, text/event-stream'} -TimeoutSec 10
+```
+
+- **`200` + `event: message` body** → server is fine. The host has a **stale
+  connection** → reconnect (Step 2).
+- **Connection refused / timeout** → server is **down** or on the wrong port/scheme
+  (Step 3).
+
+### Step 2 — Reconnect a stale host connection
+
+Command Palette → **MCP: List Servers** → select the server → **Restart**. Only
+then does the next tool call succeed.
+
+### Step 3 — Server down or wrong endpoint
+
+- Start it (`.\start-all.ps1` for HTTP apps, or let the host spawn stdio apps).
+- **Scheme/port mismatch**: `mcp.json` points at `https://localhost:<HTTP+1000>`. A
+  server started without TLS only serves plain HTTP, so the `https://` URL fails
+  with `fetch failed`. Run with TLS (the default in `start-all.ps1`).

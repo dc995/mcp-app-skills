@@ -46,7 +46,7 @@ inputSchema: {
 
 ### Fallback Hierarchy
 1. Structured `chart`/`data` provided → use pre-built renderer (all hosts)
-2. `code` string provided + eval succeeds → dynamic renderer (Claude/ChatGPT)
+2. `code` string provided + eval succeeds → dynamic renderer (permissive hosts)
 3. `code` string provided + eval blocked → default fallback (VS Code)
 4. Nothing provided → default scene
 
@@ -112,6 +112,49 @@ registerAppTool(server, "fetch-data", {
 // UI — call via MCP bridge (works through iframe sandbox)
 const result = await app.callServerTool({ name: "fetch-data", arguments: { query: "test" } });
 ```
+
+## OAuth / Authenticated APIs (Server-Side Flow)
+
+In restricted hosts the UI cannot pop a window (`window.open()` returns `null`)
+or hold provider tokens, so the entire OAuth flow lives on the **server** and the
+UI just polls for completion. Build it this way once — it's portable across all
+hosts.
+
+```typescript
+// server.ts — Express routes own the OAuth dance (Authorization Code + PKCE)
+app.get("/auth/start", (_req, res) => {
+  const url = buildAuthorizeUrl({ redirectUri: `${BASE_URL}/auth/callback`, pkce });
+  res.redirect(url);                       // user follows this in their real browser
+});
+app.get("/auth/callback", async (req, res) => {
+  const tokens = await exchangeCode(req.query.code, pkce);
+  saveTokensServerSide(tokens);            // tokens NEVER leave the server
+  res.send("<p>Signed in. You can close this tab.</p>");
+});
+
+// app-only status tool the UI can poll through the MCP bridge
+registerAppTool(server, "auth", {
+  inputSchema: { action: z.enum(["status"]) },
+  _meta: { ui: { resourceUri, visibility: ["app"] } },
+}, async () => ({
+  content: [{ type: "text", text: isAuthenticated() ? "ok" : "pending" }],
+  _meta: { authenticated: isAuthenticated() },  // boolean only, no token
+}));
+```
+
+```typescript
+// UI — render a normal link to /auth/start (no window.open), then poll
+const timer = setInterval(async () => {
+  const res = await app.callServerTool({ name: "auth", arguments: { action: "status" } });
+  const meta = (res as Record<string, unknown>)._meta as Record<string, unknown> | undefined;
+  if (meta?.authenticated) { clearInterval(timer); render(); }
+}, 2000);
+```
+
+**Rules:** access/refresh tokens stay server-side; the UI only ever sees a boolean
+and any non-sensitive profile fields the server chooses to surface; credentials
+(client secret, etc.) come from environment variables, never hardcoded. Validated
+with an Authorization-Code-+-PKCE provider login driven entirely from server routes.
 
 ## Streaming Preview
 

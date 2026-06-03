@@ -35,8 +35,8 @@ Check these files in the app:
 - [ ] `new SpeechRecognition()` — Web Speech API (**BLOCKED** in VS Code)
 
 **`package.json`** — look for:
-- [ ] SDKs that require CDN loading (azure-maps-control, @googlemaps/js-api-loader)
-- [ ] SDKs known to use eval internally (knockout, angular 1.x)
+- [ ] SDKs whose canonical install is a CDN `<script>` tag (hosted map/geo SDKs, vendor visualization SDKs) — they won't load under CSP, and many also fetch assets from vendor domains at runtime
+- [ ] Libraries known to compile strings to code internally (MVVM/data-binding or eval-based template engines)
 
 **`server.ts`** — look for:
 - [ ] `_meta.ui.csp.connectDomains` — declared but VS Code ignores these
@@ -64,22 +64,22 @@ Check these files in the app:
 **Before** (broken in VS Code):
 ```html
 <!-- mcp-app.html -->
-<script src="https://atlas.microsoft.com/sdk/javascript/mapcontrol/3/atlas.min.js"></script>
+<script src="https://cdn.vendor.example/sdk/v3/sdk.min.js"></script>
 ```
 
 **After** (works everywhere):
 ```bash
-npm install leaflet  # or the npm-bundleable alternative
+npm install the-library  # an npm-bundleable equivalent
 ```
 ```typescript
 // src/mcp-app.ts
-import L from "leaflet";
+import { thing } from "the-library";
 ```
 ```typescript
 // vite.config.ts — vite-plugin-singlefile bundles everything into one HTML
 ```
 
-**Key**: the library must be fully functional when npm-installed. SDKs that fetch assets from vendor CDNs at runtime (tiles, fonts, sprites) cannot be fixed this way — find an alternative SDK.
+**Key**: the library must be fully functional when npm-installed. SDKs that fetch assets from vendor domains at runtime (map tiles, fonts, sprites, style JSON) cannot be fixed this way — find an alternative SDK or route those fetches through the server.
 
 ### Pattern B: External Fetch → Server Proxy
 
@@ -175,19 +175,20 @@ const viewer = new Cesium.Viewer("cesiumContainer", {
 
 ## SDK Compatibility Reference
 
-| SDK | VS Code | Issue | Alternative |
+Reason about the **mechanism**, not the brand. Classify any library by how it
+loads and renders, then apply the matching verdict.
+
+| Library mechanism | VS Code | Issue | Fix |
 |---|---|---|---|
-| Azure Maps SDK | **No** | CDN + runtime tile fetch | Leaflet + OSM |
-| Google Maps JS API | **No** | CDN + API key in URL | Leaflet + OSM |
-| Mapbox GL JS | **No** | Workers + eval | Leaflet + OSM |
-| CesiumJS (full) | **Partial** | Knockout widgets | Disable infoBox/selectionIndicator |
-| Knockout.js | **No** | new Function() for bindings | Lit, Preact, vanilla |
-| Angular 1.x | **No** | eval-based templates | Modern Angular, React, vanilla |
-| Leaflet | **Yes** | — | — |
-| Three.js | **Yes** | Data-driven only | — |
-| Chart.js | **Yes** | — | — |
-| D3 | **Yes** | — | — |
-| Lit | **Yes** | — | — |
+| Loads from a vendor CDN `<script>` + fetches assets (tiles/fonts/styles) from vendor domains at runtime | **No** | CDN script + runtime `connect-src` both blocked | Use an npm-bundleable equivalent, or proxy runtime fetches through the server |
+| GL/worker renderer that compiles styles/shaders via eval or blob-eval workers | **No** | eval blocked under CSP | Use a non-eval renderer |
+| MVVM/data-binding lib that compiles binding strings via `new Function()` | **No** | string-to-code blocked | Lit, Preact, or vanilla |
+| Framework with eval-based template compilation | **No** | string-to-code blocked | A precompiled/AOT framework, React, or vanilla |
+| Large engine that bundles eval-using widgets but has a non-eval core | **Partial** | Only the widgets violate CSP | Disable the eval-using widgets (see Pattern E) |
+| npm-bundleable renderer using canvas/WebGL/SVG, no runtime vendor fetch | **Yes** | — | — |
+| Map/charting lib whose tiles/images load as `<img>` and that bundles cleanly | **Yes** | `img-src` is permissive | — |
+| Data-driven 3D / charting (structured input → pre-built renderer) | **Yes** | No eval | — |
+| Web-component / view libs that template without eval | **Yes** | — | — |
 | Preact | **Yes** | — | — |
 | Solid | **Yes** | — | — |
 

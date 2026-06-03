@@ -47,19 +47,16 @@
         "tls-offset": 1000,
         "notes": "HTTP on 3xxx, TLS on 4xxx. mcp.json points to TLS ports."
       },
-      "known-broken-sdks": [
-        "azure-maps-control (CDN + runtime tile fetches)",
-        "google-maps-js-api (CDN + runtime tile fetches)",
-        "mapbox-gl (web workers + eval)",
-        "knockout.js (new Function for bindings)",
-        "angular-1.x (eval-based template compilation)"
+      "known-broken-patterns": [
+        "Map/geo SDKs that load their script from a vendor CDN and fetch tiles or assets from vendor domains at runtime (CDN script tag + connect-src both blocked)",
+        "GL/worker-based renderers that compile styles via eval or bootstrap worker scripts through blob + eval",
+        "MVVM/templating libraries that compile data-binding strings via new Function() (string-to-code)",
+        "Frameworks with eval-based template compilation"
       ],
-      "known-working-sdks": [
-        "leaflet (npm-bundled, img tiles bypass CSP)",
-        "three.js (npm-bundled, data-driven rendering)",
-        "chart.js (npm-bundled, canvas rendering)",
-        "d3 (npm-bundled, svg/canvas)",
-        "lit (npm-bundled, no eval)"
+      "known-working-patterns": [
+        "npm-bundled rendering libraries that draw to canvas/WebGL/SVG with no string-to-code (e.g. canvas chart libs, data-driven 3D)",
+        "map libraries whose tiles load as <img> elements (img-src is permissive) and that npm-bundle cleanly",
+        "web-component / view libraries that template without eval or new Function()"
       ],
       "last-validated": "2026-04-05"
     },
@@ -106,9 +103,9 @@
         "tls-port": 4009,
         "notes": "AppHub proxies MCP tool calls to downstream servers on their HTTP ports (3xxx)."
       },
-      "known-broken-sdks": [],
-      "known-working-sdks": [
-        "All SDKs that work in a standard browser"
+      "known-broken-patterns": [],
+      "known-working-patterns": [
+        "Anything that works in a standard browser"
       ],
       "last-validated": "2026-04-05"
     },
@@ -150,53 +147,10 @@
         "cdn-external-ok": true,
         "notes": "Most permissive. HTTP only (localhost:8080). No TLS."
       },
-      "known-broken-sdks": [],
-      "known-working-sdks": ["All SDKs that work in a standard browser"],
+      "known-broken-patterns": [],
+      "known-working-patterns": ["Anything that works in a standard browser"],
       "last-validated": "2026-04-05"
-    },
-    "claude": {
-      "name": "Claude.ai",
-      "transport": ["streamable-http"],
-      "tls": true,
-      "csp": {
-        "unsafe-eval": true,
-        "unsafe-inline": true,
-        "connect-src": "unknown"
-      },
-      "sandbox": {
-        "microphone": true,
-        "camera": true,
-        "geolocation": "unknown",
-        "clipboard-write": "unknown"
-      },
-      "secure-context": true,
-      "features": {
-        "canvas-2d": true,
-        "webgl": true,
-        "eval": true,
-        "new-function": true,
-        "fetch-external": "unknown",
-        "cdn-script-tags": "unknown"
-      },
-      "bundling": {
-        "notes": "Stub — validate when testing against Claude.ai"
-      },
-      "last-validated": null
-    },
-    "openai": {
-      "name": "ChatGPT (Apps SDK)",
-      "transport": ["streamable-http"],
-      "tls": true,
-      "csp": {
-        "unsafe-eval": "unknown",
-        "unsafe-inline": "unknown"
-      },
-      "sandbox": {},
-      "features": {},
-      "bundling": {
-        "notes": "Stub — validate when testing against ChatGPT Apps SDK"
-      },
-      "last-validated": null
     }
-  }
+  },
+  "notes": "Only hosts that have been directly validated are listed. Other hosts (e.g. cloud chat assistants that render MCP App UIs) are generally more permissive than VS Code — but add a host entry here only after validating its capabilities firsthand via the HIT process in hit-process.md."
 }

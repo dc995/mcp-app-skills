@@ -137,11 +137,9 @@ machine-readable capability matrix and a process for recording new discoveries.
 |------|---------|
 | `SKILL.md` | Quick capability matrix, usage guide |
 | `host-matrix.json` | Machine-readable capability registry (source of truth) |
-| `vscode.md` | VS Code Insiders: CSP, sandbox, TLS, known broken/working SDKs |
+| `vscode.md` | VS Code Insiders: CSP, sandbox, TLS, OAuth workaround, broken/working patterns |
 | `apphub.md` | AppHub custom host: architecture, postMessage protocol details |
 | `standalone.md` | Standalone browser / basic-host (most permissive) |
-| `claude.md` | Claude.ai specifics (stub — partially validated) |
-| `openai.md` | ChatGPT specifics (stub — unvalidated) |
 | `hit-process.md` | HIT feedback loop: discover, classify, record, propagate findings |
 
 ### mcp-app-test

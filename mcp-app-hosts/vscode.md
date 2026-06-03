@@ -24,8 +24,8 @@ script-src 'self' 'unsafe-inline'
 ### 2. External CDN Loading
 - `<script src="https://cdn.example.com/lib.js">` → blocked by script-src
 - `<link href="https://cdn.example.com/style.css">` → blocked by style-src
-- **This is why Azure Maps SDK fails** — it requires loading `atlas.min.js` from `atlas.microsoft.com`
-- **This is why Google Maps JS API fails** — requires CDN script tag
+- **This is the core gap for vendor-CDN SDKs**: any library whose canonical install is a `<script>` tag pointing at a vendor CDN cannot load. This commonly affects hosted map/geo SDKs and other vendor visualization SDKs that ship as a CDN script.
+- **The deeper trap**: even if you manage to npm-bundle such a library, many still **fetch assets at runtime** (map tiles, fonts, sprites, style JSON) from vendor domains — which `connect-src 'self'` also blocks (see §3). A library is only viable in VS Code if it both bundles cleanly *and* needs no runtime vendor fetches (or routes those through the server).
 
 ### 3. External Network Requests from UI
 - `fetch("https://external-api.com/data")` → blocked by connect-src
@@ -39,7 +39,12 @@ script-src 'self' 'unsafe-inline'
 - Web Speech API (`SpeechRecognition`) → denied
 - Even declaring `_meta.ui.permissions` has no effect today
 
-### 5. Secure Context Requirements
+### 5. Popups / New Windows (breaks naive OAuth)
+- `window.open(...)` → returns `null` in the sandboxed iframe; no popup appears
+- This breaks the common OAuth pattern of opening the provider's authorize page in a popup and waiting for it to post back a token
+- **Workaround**: run the OAuth flow on the **server**, not in the UI — see "OAuth in a Restricted Host" below
+
+### 6. Secure Context Requirements
 - `vscode-webview://` origin IS treated as secure context
 - But browser APIs like Translation API, Web Bluetooth, Web NFC still require iframe permission grants that VS Code doesn't provide
 
@@ -64,21 +69,21 @@ VS Code connects to MCP servers via TLS. Convention in this workspace:
 - TLS port: `3xxx + 1000` (e.g., 4006)
 - `.vscode/mcp.json` points to TLS ports
 
-## Known SDK Compatibility
+## Known Pattern Compatibility
 
-| SDK | Works? | Issue |
+| Pattern | Works? | Why |
 |---|---|---|
-| Leaflet | **Yes** | npm-bundled, tiles load as `<img>` |
-| Three.js | **Yes** | npm-bundled, data-driven (no eval) |
-| Chart.js | **Yes** | npm-bundled, canvas rendering |
-| D3 | **Yes** | npm-bundled, SVG/canvas |
-| Lit / Web Components | **Yes** | npm-bundled, no eval |
-| Azure Maps SDK | **No** | Requires CDN `<script>` + runtime tile fetches |
-| Google Maps JS API | **No** | Requires CDN `<script>` + API key in URL |
-| Mapbox GL JS | **No** | Web workers + eval for style parsing |
-| CesiumJS (with widgets) | **Partial** | Knockout widgets use eval; disable `selectionIndicator` + `infoBox` |
-| Knockout.js | **No** | `new Function()` for data-bind parsing |
-| Angular 1.x | **No** | eval-based template compilation |
+| npm-bundled canvas/WebGL/SVG rendering | **Yes** | No string-to-code; bundled by vite-singlefile |
+| Data-driven 3D / charting (structured input → pre-built renderer) | **Yes** | No eval; renderer compiled at build time |
+| Map library whose tiles load as `<img>` and that npm-bundles cleanly | **Yes** | `img-src` is permissive, so raster tiles load |
+| Web components / view libs that template without eval | **Yes** | No `new Function()` |
+| Vendor map/geo SDK loaded from a CDN + runtime vendor tile/asset fetches | **No** | CDN `<script>` blocked AND runtime `connect-src` blocked |
+| GL/worker map renderer that compiles styles via eval or blob-eval workers | **No** | eval blocked under CSP |
+| MVVM/templating libs that compile bindings via `new Function()` | **No** | string-to-code blocked |
+| Frameworks with eval-based template compilation | **No** | eval blocked under CSP |
+| Large geo/3D engines that bundle widgets using a string-binding system | **Partial** | Disable the eval-using widgets; core renderer may still work |
+
+> Don't memorize product names — reason about the **mechanism**. If a library (a) loads from a vendor CDN, (b) evaluates strings as code, or (c) fetches assets from external domains at runtime, it will hit a wall in VS Code. If it bundles cleanly and renders without any of those, it works.
 
 ## Workaround Patterns
 
@@ -112,6 +117,65 @@ if (caps?.sandbox?.permissions?.microphone) {
   showTextInputFallback();
 }
 ```
+
+## OAuth in a Restricted Host
+
+`window.open()` returns `null` in the VS Code iframe, so the popup-based OAuth
+dance (open authorize URL → read token in a popup → postMessage it back) does not
+work. The portable fix is to **keep the entire OAuth flow on the server** and let
+the UI poll for completion. This pattern is host-agnostic — it also works in
+permissive hosts, so build it this way once.
+
+**Shape of the flow:**
+
+1. **Server owns OAuth.** The MCP server (Express) exposes provider-neutral routes:
+   - `GET /auth/start` → redirects the browser to the provider's authorize URL
+     (Authorization Code + PKCE; `redirect_uri` points back at the server)
+   - `GET /auth/callback` → exchanges the code for tokens, stores them
+     **server-side only**, and renders a "you can close this tab" page
+   - `GET /auth/status` → returns `{ authenticated: boolean }`
+2. **UI starts auth without a popup.** Render a normal link/button whose href is
+   the server's `/auth/start` URL (the user follows it in their real browser, where
+   they're already signed in). Do **not** rely on `window.open()`.
+3. **UI polls for completion** via an app-only MCP tool — never via the token:
+   ```typescript
+   // Poll the server through the MCP bridge (works inside the sandbox)
+   const timer = setInterval(async () => {
+     const res = await app.callServerTool({ name: "auth", arguments: { action: "status" } });
+     const meta = (res as Record<string, unknown>)._meta as Record<string, unknown> | undefined;
+     if (meta?.authenticated) { clearInterval(timer); render(); }
+   }, 2000);
+   ```
+4. **Tokens never reach the UI.** Access/refresh tokens live only on the server.
+   The UI sees a boolean and any non-sensitive profile fields the server chooses to
+   surface via the tool result `_meta`. Credentials come from environment variables,
+   never hardcoded.
+
+> Validated with an Authorization-Code-+-PKCE provider login driven entirely from
+> server routes, with the UI polling an app-only `status` tool. Because the token
+> exchange happens server-side, the CSP/`window.open` limitations of the iframe
+> never come into play.
+
+## "fetch failed" — Server Up but Host Won't Connect
+
+When a tool call returns `fetch failed` even though the server is running, the host
+has usually **cached a failed connection** from when the server was down. Starting
+the server afterward is not enough.
+
+1. **Verify the server is actually healthy** (independent of the host):
+   ```powershell
+   Invoke-WebRequest -Uri 'https://localhost:<TLS_PORT>/mcp' -Method POST `
+     -Body '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' `
+     -ContentType 'application/json' `
+     -Headers @{Accept='application/json, text/event-stream'} -TimeoutSec 10
+   ```
+   A `200` with an `event: message` body = the server is fine; the problem is the
+   host's cached connection.
+2. **Reconnect in the host**: Command Palette → **MCP: List Servers** → pick the
+   server → **Restart**. Only then will the next tool call succeed.
+3. **TLS must match `mcp.json`.** Entries use `https://localhost:<HTTP+1000>`. A
+   server started *without* TLS only listens on plain HTTP, so the `https://` URL
+   fails. The TLS port is always **HTTP port + 1000**.
 
 ## Runtime Host Detection
 
