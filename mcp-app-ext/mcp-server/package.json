@@ -1,0 +1,24 @@
+{
+  "name": "mcp-app-ext-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Conductor's active layer: the mcp-app-ext skills as callable MCP tools (host capabilities, compatibility gate, guidance, scaffolding).",
+  "type": "module",
+  "bin": { "mcp-app-ext": "dist/index.js" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "smoke": "npm run build && node smoke.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
