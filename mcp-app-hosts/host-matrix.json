@@ -1,5 +1,5 @@
 {
-  "version": "2026-04-05",
+  "version": "2026-06-03",
   "hosts": {
     "vscode": {
       "name": "VS Code Insiders",
@@ -10,15 +10,29 @@
         "unsafe-eval": false,
         "unsafe-inline": true,
         "connect-src": "self",
+        "media-src": "self",
         "img-src": "permissive",
-        "style-src": "'self' 'unsafe-inline'"
+        "style-src": "'self' 'unsafe-inline'",
+        "host-controlled-immutable": true,
+        "honors-meta-ui-csp": false,
+        "notes": "Policy is fixed by the host. _meta.ui.csp.connectDomains/resourceDomains are ignored; the iframe is sandbox='allow-scripts allow-same-origin' with no allow= for autoplay/microphone/camera."
       },
       "sandbox": {
         "microphone": false,
         "camera": false,
         "geolocation": false,
+        "autoplay": false,
+        "web-speech": false,
         "clipboard-write": "varies",
-        "allow-same-origin": false
+        "allow-same-origin": false,
+        "populates-host-capabilities-permissions": false
+      },
+      "server-initiated": {
+        "sampling": true,
+        "elicitation": "unvalidated",
+        "resource-subscriptions": "unvalidated",
+        "requires-stateful-transport": true,
+        "notes": "VS Code negotiates a session and supports sampling/createMessage natively (first call shows a consent dialog). The server MUST use a stateful transport (sessionIdGenerator: randomUUID); the default stateless transport silently times out server-initiated requests. Elicitation/subscriptions not yet validated firsthand."
       },
       "secure-context": true,
       "iframe-origin": "vscode-webview://",
@@ -29,6 +43,9 @@
         "websockets": true,
         "fetch-localhost": true,
         "fetch-external": false,
+        "external-media-src": false,
+        "media-autoplay": false,
+        "web-speech-synthesis": false,
         "nested-iframes": false,
         "eval": false,
         "new-function": false,
@@ -51,14 +68,16 @@
         "Map/geo SDKs that load their script from a vendor CDN and fetch tiles or assets from vendor domains at runtime (CDN script tag + connect-src both blocked)",
         "GL/worker-based renderers that compile styles via eval or bootstrap worker scripts through blob + eval",
         "MVVM/templating libraries that compile data-binding strings via new Function() (string-to-code)",
-        "Frameworks with eval-based template compilation"
+        "Frameworks with eval-based template compilation",
+        "Media apps that point <audio>/<video> at external URLs or rely on autoplay/speechSynthesis (media-src 'self', no autoplay/web-speech grant) \u2014 proxy media bytes through the server instead"
       ],
       "known-working-patterns": [
         "npm-bundled rendering libraries that draw to canvas/WebGL/SVG with no string-to-code (e.g. canvas chart libs, data-driven 3D)",
         "map libraries whose tiles load as <img> elements (img-src is permissive) and that npm-bundle cleanly",
-        "web-component / view libraries that template without eval or new Function()"
+        "web-component / view libraries that template without eval or new Function()",
+        "Media played from server-proxied same-origin bytes (data: URL or embedded resource) triggered by a user gesture"
       ],
-      "last-validated": "2026-04-05"
+      "last-validated": "2026-06-17"
     },
     "apphub": {
       "name": "AppHub (custom MCP host)",
@@ -75,6 +94,13 @@
         "geolocation": true,
         "clipboard-write": true,
         "allow-same-origin": true
+      },
+      "server-initiated": {
+        "sampling": true,
+        "elicitation": false,
+        "resource-subscriptions": "unvalidated",
+        "requires-stateful-transport": true,
+        "notes": "AppHub fulfils sampling/createMessage by bridging to its own agent SDK; its MCP client declares capabilities.sampling and answers CreateMessageRequestSchema. Downstream servers must still use a stateful transport. Elicitation not yet implemented."
       },
       "secure-context": true,
       "iframe-origin": "about:srcdoc",
@@ -125,6 +151,13 @@
         "clipboard-write": true,
         "allow-same-origin": true
       },
+      "server-initiated": {
+        "sampling": "unvalidated",
+        "elicitation": "unvalidated",
+        "resource-subscriptions": "unvalidated",
+        "requires-stateful-transport": true,
+        "notes": "basic-host capability for server-initiated requests not validated firsthand. Treat as unavailable until probed (see sampling.md cross-host validation). Validate over stdio, which is inherently bidirectional."
+      },
       "secure-context": false,
       "iframe-origin": "about:srcdoc",
       "features": {
@@ -150,6 +183,72 @@
       "known-broken-patterns": [],
       "known-working-patterns": ["Anything that works in a standard browser"],
       "last-validated": "2026-04-05"
+    },
+    "copilothub": {
+      "name": "CopilotHub (GitHub Copilot SDK host)",
+      "transport": ["http", "streamable-http", "sse"],
+      "tls": true,
+      "csp": {
+        "unsafe-eval": true,
+        "unsafe-inline": true,
+        "connect-src": "*",
+        "notes": "No CSP injected into the iframe. UIs run in srcdoc with a base theme style only."
+      },
+      "sandbox": {
+        "microphone": true,
+        "camera": true,
+        "geolocation": true,
+        "clipboard-write": true,
+        "allow-same-origin": true,
+        "allow-popups": true,
+        "notes": "iframe sandbox = 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox'. Browser/OS consent still applies to device APIs."
+      },
+      "server-initiated": {
+        "sampling": true,
+        "elicitation": false,
+        "resource-subscriptions": "unvalidated",
+        "requires-stateful-transport": true,
+        "notes": "CopilotHub fulfils sampling/createMessage by bridging to the GitHub Copilot SDK (sampleViaCopilot) — its MCP client declares capabilities.sampling and answers CreateMessageRequestSchema, including agentic sampling. No ElicitInputRequestSchema handler, so elicitation is not implemented. Downstream servers must still use a stateful transport. See copilot-sdk-host.md."
+      },
+      "secure-context": true,
+      "iframe-origin": "about:srcdoc",
+      "features": {
+        "canvas-2d": true,
+        "webgl": true,
+        "web-workers": true,
+        "websockets": true,
+        "fetch-localhost": true,
+        "fetch-external": true,
+        "nested-iframes": true,
+        "eval": true,
+        "new-function": true,
+        "cdn-script-tags": true,
+        "cdn-link-tags": true,
+        "dynamic-import": true,
+        "window-open": true
+      },
+      "bundling": {
+        "requires-singlefile": false,
+        "npm-bundled-ok": true,
+        "cdn-external-ok": true,
+        "notes": "Full browser environment served over TLS (port 4021). Both bundled and CDN approaches work."
+      },
+      "port-config": {
+        "https-port": 4021,
+        "tls-offset": 1000,
+        "notes": "HTTPS only on 4021. Connects to downstream servers on their TLS ports (https://localhost:<HTTP+1000>/mcp), Streamable HTTP with SSE fallback."
+      },
+      "authoring": {
+        "sdk": "@github/copilot-sdk",
+        "doc": "copilot-sdk-host.md",
+        "notes": "Custom host: feeds MCP servers into client.createSession({ mcpServers }) for the agent loop AND keeps an MCP Client proxy for resources/read, splash, status, and the sampling bridge."
+      },
+      "known-broken-patterns": [],
+      "known-working-patterns": [
+        "Anything that works in a standard browser",
+        "Server->host sampling (sampling/createMessage) via the Copilot SDK bridge"
+      ],
+      "last-validated": "2026-06-18"
     }
   },
   "notes": "Only hosts that have been directly validated are listed. Other hosts (e.g. cloud chat assistants that render MCP App UIs) are generally more permissive than VS Code — but add a host entry here only after validating its capabilities firsthand via the HIT process in hit-process.md."

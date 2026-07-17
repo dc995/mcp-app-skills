@@ -6,12 +6,23 @@ VS Code Insiders renders MCP App UIs in a heavily sandboxed iframe with the most
 
 ```
 script-src 'self' 'unsafe-inline'
+connect-src 'self'
+media-src 'self'        (external audio/video URLs blocked)
 ```
 
 - `unsafe-eval` is **NOT** allowed
 - `unsafe-inline` IS allowed (inline `<script>` tags work)
 - External `<script src="https://...">` is **BLOCKED**
 - External `<link href="https://...">` for CSS is **BLOCKED**
+- External `<audio>` / `<video>` `src` (and `fetch` of media) is **BLOCKED** (`media-src`/`connect-src 'self'`)
+- The iframe is `sandbox="allow-scripts allow-same-origin"` with **no** `allow=` for `autoplay`/`microphone`/`camera`, and **no** Permissions-Policy opt-in
+
+> This policy is **host-controlled and immutable** — no setting, flag, or trust prompt lets the
+> app widen it. The ext-apps spec defines opt-in knobs (`_meta.ui.csp.connectDomains` /
+> `resourceDomains`, `HostCapabilities.sandbox.permissions`), but **VS Code does not honor them today**:
+> the declared domains are ignored and `sandbox.permissions` is not populated, so there is no runtime
+> capability to detect and no permission path to request. Design as if the UI is fully isolated and the
+> **server is the only egress**.
 
 ## What This Blocks
 
@@ -48,6 +59,13 @@ script-src 'self' 'unsafe-inline'
 - `vscode-webview://` origin IS treated as secure context
 - But browser APIs like Translation API, Web Bluetooth, Web NFC still require iframe permission grants that VS Code doesn't provide
 
+### 7. Media Playback (audio / video / TTS)
+- External `<video src="https://...">` / `<audio src="https://...">` → won't load (`media-src`/`connect-src 'self'`)
+- `mediaElement.play()` → **auto-blocked**: the sandboxed iframe is granted no `autoplay` permission, so playback (even of allowed sources) is suppressed until a user gesture, and often outright denied
+- `window.speechSynthesis` (Web Speech TTS) and `getUserMedia` audio output paths → not granted
+- Declaring `_meta.ui.permissions` or `_meta.ui.csp` does **not** change any of this
+- **Workaround**: proxy the media through the MCP server and return **bytes**, not a URL — see "Media → server-proxied bytes" below
+
 ## What Works
 
 | Feature | Notes |
@@ -68,7 +86,37 @@ VS Code connects to MCP servers via TLS. Convention in this workspace:
 - HTTP port: `3xxx` (e.g., 3006 for GetTime)
 - TLS port: `3xxx + 1000` (e.g., 4006)
 - `.vscode/mcp.json` points to TLS ports
+## Registering & Managing the Server in VS Code
 
+### `mcp.json` shape
+Two locations: workspace `.vscode/mcp.json` (commit it to share with the team) or the user
+profile (`MCP: Open User Configuration`). MCP Apps in this workspace use the HTTP transport on the
+TLS port:
+```jsonc
+{
+  "servers": {
+    "gettime": { "type": "http", "url": "https://localhost:4006/mcp" }
+  }
+}
+```
+Other ways to add a server: Extensions view → search `@mcp` (gallery install, user or
+"Install in Workspace"); or `MCP: Add Server` for a guided flow. Avoid hardcoding secrets — use
+input variables / env files.
+
+### Trust
+On first start VS Code shows a **trust dialog**; the server won't run (its tools, prompts,
+resources, **and MCP Apps** are excluded) until trusted. Starting the server directly from the
+`mcp.json` code lens **skips** the prompt. Reset with `MCP: Reset Trust`.
+
+### Manage / troubleshoot
+- `MCP: List Servers` → pick a server → **Restart** / **Show Output** / Enable / Disable.
+- The **Show Output** log is the first stop when a tool errors or the server won't load.
+- Enable/disable state is stored separately from `mcp.json`, so it doesn't affect the shared file.
+
+### Sandboxing (not relevant to MCP App UI isolation)
+`"sandboxEnabled": true` (+ a top-level `sandbox` object) restricts a **stdio server process's**
+filesystem/network — **macOS/Linux only, not Windows**, and unrelated to the *iframe* CSP/sandbox
+that governs the App UI documented above. Don't conflate the two.
 ## Known Pattern Compatibility
 
 | Pattern | Works? | Why |
@@ -117,6 +165,29 @@ if (caps?.sandbox?.permissions?.microphone) {
   showTextInputFallback();
 }
 ```
+
+### Media (audio / video) → server-proxied bytes
+`media-src 'self'` blocks external media URLs and there is no `autoplay` grant, so a
+media app cannot point an element at a remote URL. Fetch the media **on the server** and
+hand the UI inline bytes it can render same-origin:
+```typescript
+// UI: never set vid.src to an external URL — ask the server for bytes
+const res = await app.callServerTool({ name: "fetch-media", arguments: { url } });
+// Server returned a data: URL (or embedded-resource blob) in the tool result
+const dataUrl = (res._meta as { dataUrl?: string })?.dataUrl;
+if (dataUrl) vid.src = dataUrl;            // same-origin data: passes media-src 'self'
+// Playback still needs a user gesture (no autoplay) — wire play() to a click, not onload.
+```
+```typescript
+// Server: fetch the media and return bytes (mind a size ceiling — base64 inflates ~33%;
+// for large media prefer chunked/embedded resources over a single data: URL).
+const bytes = Buffer.from(await (await fetch(url)).arrayBuffer());
+return { content: [{ type: "text", text: "ok" }],
+  _meta: { dataUrl: `data:${mime};base64,${bytes.toString("base64")}` } };
+```
+> For text-to-speech, generate the audio server-side (the server has full network/runtime
+> access) and return the rendered audio bytes the same way, rather than relying on the
+> sandboxed `speechSynthesis`.
 
 ## OAuth in a Restricted Host
 
@@ -194,3 +265,14 @@ if (!caps?.sandbox?.permissions?.microphone) {
   showFallbackUI("Microphone not available in this host");
 }
 ```
+
+## Canonical References
+
+- VS Code — Add and manage MCP servers: https://code.visualstudio.com/docs/agent-customization/mcp-servers
+- VS Code — MCP configuration reference: https://code.visualstudio.com/docs/agents/reference/mcp-configuration
+- VS Code — MCP Apps support (blog): https://code.visualstudio.com/blogs/2026/01/26/mcp-apps-support
+- ext-apps — Testing MCP Apps: https://github.com/modelcontextprotocol/ext-apps/blob/main/docs/testing-mcp-apps.md
+
+> Media CSP/sandbox constraints above were verified firsthand in `mcpapps1`
+> (SayMCPapp / VideoResourceMCPapp / SheetMusicMCPapp, 2026-06-17). VS Code's iframe policy is
+> fixed; the `_meta.ui.csp` / `sandbox.permissions` opt-ins are spec'd but not yet honored.

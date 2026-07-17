@@ -8,8 +8,13 @@ Ask: "Which hosts will this app run in?"
 
 - **VS Code only** → strictest constraints apply
 - **AppHub only** → nearly unrestricted
+- **CopilotHub only** → permissive (same profile as AppHub) + supports a server→host sampling
+  bridge; see [../mcp-app-hosts/copilot-sdk-host.md](../mcp-app-hosts/copilot-sdk-host.md)
 - **Multi-host** (VS Code + AppHub + others) → must use Universal Safe Set
 - **Unknown** → assume multi-host (safest default)
+
+> Authoring the host itself (not just targeting one)? See
+> [../mcp-app-hosts/SKILL.md](../mcp-app-hosts/SKILL.md) → "Authoring a Host".
 
 ## Step 2: Feature Scan
 

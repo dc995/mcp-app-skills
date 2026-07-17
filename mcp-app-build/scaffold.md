@@ -80,6 +80,13 @@ async function startHTTP() {
 
   app.all("/mcp", async (req: Request, res: Response) => {
     const server = createServer();
+    // STATELESS transport: a fresh server+transport per request. Correct for
+    // "Display Frame" apps (tool in → UI out). ⚠️ This BREAKS server-initiated
+    // requests (sampling/createMessage, elicitation, resource subscriptions):
+    // the client's reply arrives on a separate POST that lands on a new
+    // transport instance, so the original request never resolves and the tool
+    // times out (-32001). If your app calls back into the client, use the
+    // STATEFUL template below instead. See sampling.md (Frame Type B).
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on("close", () => { transport.close().catch(() => {}); server.close().catch(() => {}); });
     await server.connect(transport);
@@ -96,6 +103,47 @@ async function startStdio() {
 if (process.argv.includes("--stdio")) startStdio();
 else startHTTP();
 ```
+
+## main.ts Template — STATEFUL (Frame Type B: sampling / elicitation / subscriptions)
+
+Use this **only** if your server calls back into the client (sampling,
+elicitation, server-driven progress, or resource subscriptions). It keeps a
+transport per session keyed by `Mcp-Session-Id` so the client's reply routes
+back to the same instance. See [sampling.md](sampling.md) for when this is
+required and the matching client-side capability.
+
+```typescript
+import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
+import { randomUUID } from "node:crypto";
+// ...same imports as the stateless template...
+
+const transports = new Map<string, StreamableHTTPServerTransport>();
+
+app.all("/mcp", async (req: Request, res: Response) => {
+  const sid = req.headers["mcp-session-id"] as string | undefined;
+  let transport = sid ? transports.get(sid) : undefined;
+
+  if (!transport) {
+    if (req.method !== "POST" || !isInitializeRequest(req.body)) {
+      res.status(400).json({ jsonrpc: "2.0", id: null,
+        error: { code: -32000, message: "Bad Request: no valid session ID" } });
+      return;
+    }
+    transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+      onsessioninitialized: (id) => transports.set(id, transport!),
+    });
+    transport.onclose = () => { if (transport!.sessionId) transports.delete(transport!.sessionId); };
+    const server = createServer();
+    await server.connect(transport);
+  }
+  await transport.handleRequest(req, res, req.body);
+});
+```
+
+> Stateful servers hold per-session memory — always clean up on `onclose`, and
+> note they are stickier to scale horizontally (session affinity). Keep stateless
+> as the default; opt into this only when a server→client request forces it.
 
 ## vite.config.ts
 

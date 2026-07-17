@@ -24,12 +24,29 @@ Every MCP App has two halves:
 Host calls tool → Server returns result → Host renders resource UI → UI receives result
 ```
 
+## Pick a Frame Type first
+
+Before scaffolding, decide which of two shapes your app is — it determines the
+transport and whether you depend on host capabilities.
+
+| | **Type A — Display Frame** (default, ~90%) | **Type B — Interactive / Agentic Frame** |
+|---|---|---|
+| Behavior | Tool in → content + UI out. No server-initiated traffic. | Server calls **back** into the client mid-tool. |
+| Triggers | — | `sampling/createMessage`, `elicitation/create`, resource subscriptions, cross-call progress |
+| Transport | **Stateless** (`sessionIdGenerator: undefined`) | **Stateful** (`sessionIdGenerator: () => randomUUID()` + session map) |
+| Host dependency | None beyond tools/resources | Host must advertise `sampling` / `elicitation`; **always ship a Type A fallback** |
+| Guide | this skill + [scaffold.md](scaffold.md) | [sampling.md](sampling.md) |
+
+**Rule of thumb:** any server→client *request* (not just a notification) ⇒ Type B
+/ stateful. If your tools only return content, you are Type A — stay there.
+
 ## Sub-Files
 
 | File | Purpose |
 |---|---|
 | [pre-build-check.md](pre-build-check.md) | **Run first** — safety gate vs host capabilities |
-| [scaffold.md](scaffold.md) | Project structure, deps, vite config, main.ts/server.ts templates |
+| [scaffold.md](scaffold.md) | Project structure, deps, vite config, main.ts/server.ts templates (stateless + stateful) |
+| [sampling.md](sampling.md) | **Frame Type B** — sampling/elicitation/subscriptions, stateful transport, graceful degradation |
 | [patterns.md](patterns.md) | SDK lifecycle, handlers, data-driven rendering, host styling |
 | [references/sdk-api.md](references/sdk-api.md) | App class, registerAppTool, registerAppResource quick-ref |
 

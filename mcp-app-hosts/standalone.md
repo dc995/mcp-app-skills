@@ -8,9 +8,14 @@ The `basic-host` example from the ext-apps repo is a minimal MCP Apps host for l
 git clone https://github.com/modelcontextprotocol/ext-apps.git /tmp/mcp-ext-apps
 cd /tmp/mcp-ext-apps/examples/basic-host
 npm install
-SERVERS='["http://localhost:3001/mcp"]' npm run start
-# Open http://localhost:8080
+SERVERS='["http://localhost:3001/mcp"]' npm start
+# Open http://localhost:8080 — list multiple server URLs in the array to connect several at once
 ```
+
+> basic-host ships collapsible **Tool Input / Tool Result / Messages / Model Context** debug
+> panels and `[HOST]`-prefixed console logs. Use it as the first-pass protocol debugger before
+> VS Code. See [`../mcp-app-test/debugging.md`](../mcp-app-test/debugging.md) and the
+> [ext-apps testing guide](https://github.com/modelcontextprotocol/ext-apps/blob/main/docs/testing-mcp-apps.md).
 
 ## Capabilities
 

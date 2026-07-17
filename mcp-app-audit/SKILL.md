@@ -42,6 +42,7 @@ Check these files in the app:
 - [ ] `_meta.ui.csp.connectDomains` — declared but VS Code ignores these
 - [ ] Missing `RESOURCE_MIME_TYPE` on resource registration
 - [ ] Tools without text content fallback for non-UI hosts
+- [ ] `server.server.createMessage(...)` / `elicitInput(...)` / `resources/subscribe` **while** `main.ts` uses a stateless transport (`sessionIdGenerator: undefined`) — these server→client requests time out (`-32001`). Needs the stateful transport + a Display-Frame fallback. See `mcp-app-build/sampling.md`.
 
 ### Step 2: Classify Each Finding
 
@@ -54,6 +55,7 @@ Check these files in the app:
 | Library uses eval internally | [RENDERING] | Breaking in VS Code |
 | No text fallback in tool result | [PROTOCOL] | Degraded in non-UI hosts |
 | CSP relaxation in `_meta` | [CSP] | Cosmetic (VS Code ignores it) |
+| Sampling/elicitation on stateless transport | [TRANSPORT] | Breaking — server→client request times out (-32001) |
 
 ### Step 3: Apply Rewrite Patterns
 

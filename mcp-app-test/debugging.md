@@ -24,6 +24,31 @@ Opens at `http://localhost:6274`. Proxy runs at `http://localhost:6277`.
 - Debugging protocol-level issues (transport, session handling)
 - Comparing expected vs actual tool output
 
+## Tool 1.5: basic-host Debug Panels (ext-apps reference host)
+
+The ext-apps `basic-host` is the fastest first-pass debugging surface — a standard browser
+page (no Electron/webview origin quirks) that renders your App in a sandboxed iframe. Start it
+pointed at your server and open `http://localhost:8080`:
+
+```bash
+cd examples/basic-host          # from a clone of modelcontextprotocol/ext-apps
+SERVERS='["http://localhost:3001/mcp"]' npm start   # list multiple URLs to connect several servers
+```
+
+Its collapsible panels expose every layer of the App protocol:
+
+| Panel | Shows |
+|---|---|
+| **Tool Input** | The JSON input sent to your tool |
+| **Tool Result** | The result your tool returned |
+| **Messages** | Messages your App sent to the model (`updateModelContext`) |
+| **Model Context** | Context updates the App pushed to the host |
+
+For more, open the browser console — basic-host logs key events (server connections, tool
+calls, App init, App→host requests) with a **`[HOST]`** prefix. Use this to confirm the
+protocol round-trip *before* chasing host-specific CSP failures in VS Code.
+Source: [ext-apps testing guide](https://github.com/modelcontextprotocol/ext-apps/blob/main/docs/testing-mcp-apps.md).
+
 ## Tool 2: VS Code DevTools
 
 The iframe's console output IS visible in VS Code DevTools.
