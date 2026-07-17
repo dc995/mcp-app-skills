@@ -12,8 +12,7 @@ ChatGPT, and others).
 
 ## Author
 
-**David Crawford** — Principal Architect, Microsoft
-- Email: davidcra@microsoft.com
+**David Crawford** — [@dc995](https://github.com/dc995)
 
 ## Background
 
@@ -108,7 +107,8 @@ patterns (handlers, data-driven rendering, host styling), and framework guidance
 |------|---------|
 | `SKILL.md` | Entry point — decision tree, file structure, port assignment |
 | `pre-build-check.md` | Safety gate: scan planned features against host capability matrix |
-| `scaffold.md` | Templates: `server.ts`, `main.ts`, `vite.config.ts`, `package.json` |
+| `scaffold.md` | Templates: `server.ts`, `main.ts` (stateless + stateful), `vite.config.ts`, `package.json` |
+| `sampling.md` | Frame Type B: sampling/elicitation/subscriptions, stateful transport, graceful degradation |
 | `patterns.md` | SDK lifecycle, data-driven rendering, tool visibility, host styling, server proxying |
 | `references/sdk-api.md` | Quick reference: `App` class, `registerAppTool`, `registerAppResource` |
 
@@ -139,6 +139,8 @@ machine-readable capability matrix and a process for recording new discoveries.
 | `host-matrix.json` | Machine-readable capability registry (source of truth) |
 | `vscode.md` | VS Code Insiders: CSP, sandbox, TLS, OAuth workaround, broken/working patterns |
 | `apphub.md` | AppHub custom host: architecture, postMessage protocol details |
+| `copilot-sdk-host.md` | Authoring a host on the GitHub Copilot SDK: dual-channel, `tools:["*"]`, hooks-based tool capture, sampling bridge |
+| `host-rendering.md` | Rendering MCP App tiles in a web/React host: iframe sandbox flags, per-tile CSP, dual `_meta` resource-URI shapes, dark/light theming, PDF/plugin escapes, the opaque-handle relay fix, and the sampling reverse-channel for interactive tiles |
 | `standalone.md` | Standalone browser / basic-host (most permissive) |
 | `hit-process.md` | HIT feedback loop: discover, classify, record, propagate findings |
 
@@ -158,6 +160,23 @@ Playwright E2E tests, cross-host validation, and debugging guidance.
 | `debugging.md` | ui-inspector, DevTools, postMessage tracing |
 | `references/playwright-patterns.md` | Extracted fixtures and helpers |
 
+### mcp-app-ext (agent + MCP server)
+
+**Conductor** — a full-stack agent for the MCP Apps *Extension* (not a single app).
+Where the four skills above are passive references, `mcp-app-ext` is the **active**
+layer: an agent persona that composes the whole stack (MCP server → UI resource →
+host → stateful session) plus a companion MCP server that turns the skills' rules
+into **callable, verifiable tools** — so any agent gets the behavior by *sensing*
+reality, not by being trusted to have read the instructions.
+
+**Files:**
+
+| File | Purpose |
+|------|---------|
+| `AGENT.md` | Conductor persona: routes build/host/test/audit and composes the full stack; "sense, don't assume" operating rules |
+| `mcp-server/` | Runnable MCP server (stdio) exposing `list_host_capabilities`, `check_compatibility` (pre-build gate), `get_guidance`, `scaffold` |
+| `README.md` | Why it exists, the stack it composes, how to run the server |
+
 ## Installation
 
 ### VS Code / GitHub Copilot
@@ -170,6 +189,7 @@ Copy-Item -Recurse mcp-app-build  "$env:USERPROFILE\.copilot\skills\mcp-app-buil
 Copy-Item -Recurse mcp-app-audit  "$env:USERPROFILE\.copilot\skills\mcp-app-audit"
 Copy-Item -Recurse mcp-app-hosts  "$env:USERPROFILE\.copilot\skills\mcp-app-hosts"
 Copy-Item -Recurse mcp-app-test   "$env:USERPROFILE\.copilot\skills\mcp-app-test"
+Copy-Item -Recurse mcp-app-ext    "$env:USERPROFILE\.copilot\skills\mcp-app-ext"
 ```
 
 ```bash
@@ -178,13 +198,28 @@ cp -r mcp-app-build  ~/.copilot/skills/mcp-app-build
 cp -r mcp-app-audit  ~/.copilot/skills/mcp-app-audit
 cp -r mcp-app-hosts  ~/.copilot/skills/mcp-app-hosts
 cp -r mcp-app-test   ~/.copilot/skills/mcp-app-test
+cp -r mcp-app-ext    ~/.copilot/skills/mcp-app-ext
 ```
 
 ### Claude Code
 
 ```bash
-cp -r mcp-app-build mcp-app-audit mcp-app-hosts mcp-app-test ~/.claude/skills/
+cp -r mcp-app-build mcp-app-audit mcp-app-hosts mcp-app-test mcp-app-ext ~/.claude/skills/
 ```
+
+### Conductor agent + MCP server
+
+`mcp-app-ext` also ships an agent persona (`AGENT.md`) and a companion MCP server.
+After copying the folder, start a session as Conductor (e.g. `copilot --agent
+mcp-app-ext`), and optionally run the server so the agent can *sense* compatibility
+with real tool calls:
+
+```bash
+cd mcp-app-ext/mcp-server && npm install && npm run build && npm start
+```
+
+Register it (stdio) with `command: "node"`, `args: ["dist/index.js"]`, `cwd` set to
+`mcp-app-ext/mcp-server`. See [mcp-app-ext/README.md](mcp-app-ext/README.md).
 
 ### Gemini CLI
 
@@ -211,6 +246,8 @@ After installing, ask your agent:
 - "Audit my MCP App for VS Code compatibility" → should invoke `mcp-app-audit`
 - "Does microphone work in VS Code?" → should invoke `mcp-app-hosts`
 - "Write tests for my MCP App" → should invoke `mcp-app-test`
+- "Build an MCP App and a host to render it, end to end" → should invoke `mcp-app-ext` (Conductor)
+- "Why won't my tile render / drag / theme in my web host?" → `mcp-app-hosts/host-rendering.md`
 
 ## Related
 
