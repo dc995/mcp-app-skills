@@ -23,19 +23,17 @@ Multi-layer test strategy for MCP Apps: protocol-level server tests, browser E2E
 | [e2e.md](e2e.md) | Layer 2: Playwright E2E patterns (page objects, fixtures) |
 | [cross-host.md](cross-host.md) | Layer 3: Multi-host validation matrix |
 | [debugging.md](debugging.md) | ui-inspector, DevTools, postMessage tracing |
-| [references/playwright-patterns.md](references/playwright-patterns.md) | Extracted fixtures + helpers from mcpapps1 test suite |
+| [references/playwright-patterns.md](references/playwright-patterns.md) | Generic fixtures + helpers distilled from a multi-app validation suite |
 
 ## Quick Start
 
-### Run existing tests (mcpapps1 workspace)
+### Run the target project's existing tests
 ```bash
 cd tests
-npm test                    # all projects
-npm run test:server         # server API only (no browser)
-npm run test:smoke          # smoke E2E subset
-npm run test:e2e            # full E2E (headed)
-npm run test:ui             # interactive Playwright UI mode
+npm test                    # use scripts already defined by the target project
 ```
 
 ### Prerequisites
-All servers must be running: `.\start-all.ps1` from repo root.
+Start only the servers required by the selected tests. Prefer test fixtures or
+workspace tasks that own process startup and teardown rather than assuming a
+specific repository launcher.

@@ -4,10 +4,10 @@
 
 ```bash
 # Production
-npm install @modelcontextprotocol/ext-apps @modelcontextprotocol/sdk zod express cors
+npm install @modelcontextprotocol/ext-apps @modelcontextprotocol/sdk zod express
 
 # Dev
-npm install -D typescript vite vite-plugin-singlefile concurrently cross-env tsx @types/node @types/express @types/cors
+npm install -D typescript vite vite-plugin-singlefile concurrently cross-env tsx @types/node @types/express
 ```
 
 Always use `npm install` — never guess version numbers.
@@ -68,15 +68,30 @@ import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import cors from "cors";
-import type { Request, Response } from "express";
+import type { NextFunction, Request, Response } from "express";
 import { createServer } from "./server.js";
 
 const port = parseInt(process.env.PORT ?? "<YOUR_PORT>", 10);
 
 async function startHTTP() {
-  const app = createMcpExpressApp({ host: "0.0.0.0", allowedHosts: ["localhost", "127.0.0.1"] });
-  app.use(cors());
+  const app = createMcpExpressApp({
+    host: "127.0.0.1",
+    allowedHosts: ["localhost", "127.0.0.1"],
+  });
+  const allowedOrigins = new Set(
+    (process.env.MCP_ALLOWED_ORIGINS ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean),
+  );
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const origin = req.headers.origin;
+    if (origin && !allowedOrigins.has(origin)) {
+      res.status(403).json({ error: "Forbidden origin" });
+      return;
+    }
+    next();
+  });
 
   app.all("/mcp", async (req: Request, res: Response) => {
     const server = createServer();
@@ -88,12 +103,21 @@ async function startHTTP() {
     // times out (-32001). If your app calls back into the client, use the
     // STATEFUL template below instead. See sampling.md (Frame Type B).
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-    res.on("close", () => { transport.close().catch(() => {}); server.close().catch(() => {}); });
+    res.on("close", () => {
+      void transport.close().catch((error) =>
+        console.error("Failed to close MCP transport", error),
+      );
+      void server.close().catch((error) =>
+        console.error("Failed to close MCP server", error),
+      );
+    });
     await server.connect(transport);
     await transport.handleRequest(req, res, req.body);
   });
 
-  app.listen(port, () => console.log(`MCP server on http://localhost:${port}/mcp`));
+  app.listen(port, "127.0.0.1", () =>
+    console.log(`MCP server on http://127.0.0.1:${port}/mcp`),
+  );
 }
 
 async function startStdio() {
@@ -117,11 +141,59 @@ import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { randomUUID } from "node:crypto";
 // ...same imports as the stateless template...
 
-const transports = new Map<string, StreamableHTTPServerTransport>();
+type Session = {
+  server: McpServer;
+  transport: StreamableHTTPServerTransport;
+  lastSeenAt: number;
+};
+
+const sessions = new Map<string, Session>();
+const MAX_SESSIONS = 100;
+const SESSION_TTL_MS = 30 * 60 * 1000;
+
+async function closeSession(id: string): Promise<void> {
+  const session = sessions.get(id);
+  if (!session) return;
+  sessions.delete(id);
+  const results = await Promise.allSettled([
+    session.transport.close(),
+    session.server.close(),
+  ]);
+  const failures = results
+    .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+    .map((result) => result.reason);
+  if (failures.length > 0) {
+    throw new AggregateError(failures, `Failed to fully close MCP session ${id}`);
+  }
+}
+
+setInterval(() => {
+  const cutoff = Date.now() - SESSION_TTL_MS;
+  for (const [id, session] of sessions) {
+    if (session.lastSeenAt < cutoff) {
+      void closeSession(id).catch((error) =>
+        console.error(`Failed to expire MCP session ${id}`, error),
+      );
+    }
+  }
+}, 60_000).unref();
 
 app.all("/mcp", async (req: Request, res: Response) => {
   const sid = req.headers["mcp-session-id"] as string | undefined;
-  let transport = sid ? transports.get(sid) : undefined;
+  const existing = sid ? sessions.get(sid) : undefined;
+
+  if (req.method === "DELETE") {
+    if (!sid || !existing) {
+      res.status(404).json({ error: "Unknown or expired session" });
+      return;
+    }
+    await closeSession(sid);
+    res.status(204).end();
+    return;
+  }
+
+  let transport = existing?.transport;
+  if (existing) existing.lastSeenAt = Date.now();
 
   if (!transport) {
     if (req.method !== "POST" || !isInitializeRequest(req.body)) {
@@ -129,21 +201,41 @@ app.all("/mcp", async (req: Request, res: Response) => {
         error: { code: -32000, message: "Bad Request: no valid session ID" } });
       return;
     }
-    transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: () => randomUUID(),
-      onsessioninitialized: (id) => transports.set(id, transport!),
-    });
-    transport.onclose = () => { if (transport!.sessionId) transports.delete(transport!.sessionId); };
+    if (sessions.size >= MAX_SESSIONS) {
+      res.status(503).json({ error: "Session capacity reached" });
+      return;
+    }
     const server = createServer();
-    await server.connect(transport);
+    const sessionTransport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+      onsessioninitialized: (id) =>
+        sessions.set(id, {
+          server,
+          transport: sessionTransport,
+          lastSeenAt: Date.now(),
+        }),
+    });
+    sessionTransport.onclose = () => {
+      const id = sessionTransport.sessionId;
+      if (!id) return;
+      const session = sessions.get(id);
+      sessions.delete(id);
+      if (session) {
+        void session.server.close().catch((error) =>
+          console.error(`Failed to close MCP session server ${id}`, error),
+        );
+      }
+    };
+    transport = sessionTransport;
+    await server.connect(sessionTransport);
   }
   await transport.handleRequest(req, res, req.body);
 });
 ```
 
-> Stateful servers hold per-session memory — always clean up on `onclose`, and
-> note they are stickier to scale horizontally (session affinity). Keep stateless
-> as the default; opt into this only when a server→client request forces it.
+> Stateful servers hold per-session memory. Enforce authorization binding, TTL,
+> capacity, `DELETE`, and cleanup. Horizontal deployments also need session
+> affinity or a shared session/event store.
 
 ## vite.config.ts
 
@@ -171,44 +263,21 @@ export default defineConfig({
 }
 ```
 
-## .vscode/mcp.json Registration
+## Host registration
 
-Add to the workspace's `.vscode/mcp.json`:
+For VS Code, add a workspace or user MCP configuration entry. HTTP is acceptable
+for loopback development unless your environment specifically requires HTTPS:
 
 ```json
 "<app-id>": {
   "type": "http",
-  "url": "https://localhost:<TLS_PORT>/mcp"
+  "url": "http://127.0.0.1:<PORT>/mcp"
 }
 ```
 
-## start-all.ps1 Registration
+For a stdio server, register `command`, `args` and an absolute or reliably
+resolved `cwd` instead of starting a persistent HTTP process.
 
-Add to the `$apps` ordered hashtable in `start-all.ps1`:
-
-```powershell
-"<AppName>MCPapp" = <HTTP_PORT>
-```
-
-## Ports, TLS & start-all
-
-Two distinct ports per app, by convention:
-
-| | Port | Used by |
-|---|---|---|
-| HTTP | `3xxx` (e.g. `3013`) | plain dev / `--no-tls` |
-| TLS  | **HTTP + 1000** (e.g. `4013`) | what `.vscode/mcp.json` points at |
-
-- **`mcp.json` uses the `https://localhost:<HTTP+1000>/mcp` URL**, so the server
-  must run **with TLS** for the host to connect. `start-all.ps1` runs TLS by
-  default; certs come from `mkcert` at the repo-root `.certs/` folder
-  (e.g. `.certs/localhost.pem` + `.certs/localhost-key.pem`).
-- Pick the next free HTTP port = (max existing HTTP port) + 1. The TLS port is
-  then automatically that + 1000 — don't hand-pick it.
-- **HTTP transport vs stdio:**
-  - `"type": "http"` apps need a running server process — they belong in
-    `start-all.ps1` and are started by you.
-  - `"type": "stdio"` apps are spawned on demand by the host from `mcp.json`
-    (`command` + `args`) — do **not** add them to `start-all.ps1`.
-- Run everything: `.\start-all.ps1` (TLS on → 4xxx). Flags: `-Force` to
-  kill + restart, `-NoTls` for plain HTTP on 3xxx.
+TLS, reverse proxies, service launchers and port allocation are environment
+decisions. If HTTPS is required, trust a development CA or use a scoped client
+CA configuration; do not disable TLS verification process-wide.

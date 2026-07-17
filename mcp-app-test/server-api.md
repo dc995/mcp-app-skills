@@ -7,22 +7,37 @@ No browser needed. Tests MCP protocol compliance, tool schemas, and resource ser
 Every MCP server health check starts with the initialize handshake:
 
 ```typescript
+async function readJsonRpc(resp: Response): Promise<unknown> {
+  const body = await resp.text();
+  if (resp.headers.get("content-type")?.includes("text/event-stream")) {
+    const data = body
+      .split(/\r?\n/)
+      .find((line) => line.startsWith("data:"));
+    if (!data) throw new Error("SSE response contained no JSON-RPC data event");
+    return JSON.parse(data.slice("data:".length).trim());
+  }
+  return JSON.parse(body);
+}
+
 async function mcpInitialize(port: number): Promise<unknown> {
   const resp = await fetch(`http://localhost:${port}/mcp`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json, text/event-stream",
+    },
     body: JSON.stringify({
       jsonrpc: "2.0",
       id: 1,
       method: "initialize",
       params: {
-        protocolVersion: "2024-11-05",
+        protocolVersion: "2025-11-25",
         capabilities: {},
         clientInfo: { name: "test-client", version: "1.0.0" },
       },
     }),
   });
-  return resp.json();
+  return readJsonRpc(resp);
 }
 ```
 
@@ -37,7 +52,10 @@ async function mcpInitialize(port: number): Promise<unknown> {
 async function callTool(port: number, name: string, args: Record<string, unknown>) {
   const resp = await fetch(`http://localhost:${port}/mcp`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json, text/event-stream",
+    },
     body: JSON.stringify({
       jsonrpc: "2.0",
       id: 2,
@@ -45,7 +63,7 @@ async function callTool(port: number, name: string, args: Record<string, unknown
       params: { name, arguments: args },
     }),
   });
-  return resp.json();
+  return readJsonRpc(resp);
 }
 ```
 
@@ -60,7 +78,10 @@ async function callTool(port: number, name: string, args: Record<string, unknown
 async function readResource(port: number, uri: string) {
   const resp = await fetch(`http://localhost:${port}/mcp`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json, text/event-stream",
+    },
     body: JSON.stringify({
       jsonrpc: "2.0",
       id: 3,
@@ -68,14 +89,19 @@ async function readResource(port: number, uri: string) {
       params: { uri },
     }),
   });
-  return resp.json();
+  return readJsonRpc(resp);
 }
 ```
 
 ### What to Verify
 - Response has `result.contents[0].text` containing HTML
 - HTML contains `<script` tag (bundled JS present)
-- MIME type is `text/html; ext-apps`
+- MIME type is `text/html;profile=mcp-app`
+
+For a stateful server, capture the `MCP-Session-Id` response header from
+`initialize` and send it on every subsequent request. Prefer the official SDK
+client for full lifecycle/session tests; raw JSON-RPC is useful only for focused
+wire-level assertions.
 
 ## Server Registry Pattern
 
@@ -83,10 +109,10 @@ Define a central registry for all servers under test:
 
 ```typescript
 export const SERVERS: Record<string, { port: number; tools: string[] }> = {
-  "get-time": { port: 3006, tools: ["get-time"] },
-  "threejs":  { port: 3002, tools: ["show_threejs_scene", "learn_threejs"] },
-  "map":      { port: 3003, tools: ["show-map", "geocode", "fetch-boundary"] },
-  "budget":   { port: 3004, tools: ["allocate-budget"] },
+  "example": {
+    port: Number(process.env.EXAMPLE_MCP_PORT ?? 3000),
+    tools: ["example-tool"],
+  },
 };
 ```
 
@@ -106,20 +132,22 @@ for (const [id, info] of Object.entries(SERVERS)) {
 If using AppHub as host, test its proxy endpoints:
 
 ```typescript
-const APPHUB = "http://localhost:3009";
+const CUSTOM_HOST = process.env.CUSTOM_HOST_URL;
 
-test("AppHub lists connected servers", async () => {
-  const resp = await fetch(`${APPHUB}/api/servers`);
+test("custom host lists connected servers", async () => {
+  test.skip(!CUSTOM_HOST, "CUSTOM_HOST_URL is not configured");
+  const resp = await fetch(`${CUSTOM_HOST}/api/servers`);
   const data = await resp.json();
   expect(data.servers.length).toBeGreaterThan(0);
   expect(data.servers.every(s => s.status === "connected")).toBe(true);
 });
 
-test("AppHub proxies tool calls", async () => {
-  const resp = await fetch(`${APPHUB}/api/tools/call`, {
+test("custom host proxies tool calls", async () => {
+  test.skip(!CUSTOM_HOST, "CUSTOM_HOST_URL is not configured");
+  const resp = await fetch(`${CUSTOM_HOST}/api/tools/call`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ serverId: "get-time", tool: "get-time", args: {} }),
+    body: JSON.stringify({ serverId: "example", tool: "example-tool", args: {} }),
   });
   const data = await resp.json();
   expect(data.content).toBeDefined();

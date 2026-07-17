@@ -1,6 +1,8 @@
 # AppHub Host — Custom MCP App Host
 
-AppHub is a custom MCP App host built in this workspace (`AppHubMCPapp/`). It runs as a web application that connects to multiple MCP servers and renders their UIs in iframes with full browser capabilities.
+AppHub is the first-party custom-host validation pattern from which several
+lessons in this repository were distilled. It connects to multiple MCP servers,
+proxies tools/resources and renders their UIs in browser tiles.
 
 ## Architecture
 
@@ -14,13 +16,20 @@ Browser → AppHub (Express, port 3009/4009)
 
 ## Capabilities
 
-AppHub is the **most permissive** validated host: full browser environment, minimal iframe sandbox, all APIs available.
+AppHub is a permissive **first-party validation host**. Its original configuration
+assumes reviewed apps; it is not a safe template for rendering arbitrary
+third-party MCP resources.
 
 - `eval()` / `new Function()`: **Yes**
 - External `<script src>` CDN: **Yes**
 - External `fetch()`: **Yes**
-- All browser permission APIs: **Yes** (subject to user/OS consent)
-- `connect-src`: unrestricted
+- Browser permission APIs: available only when host policy and user/OS consent allow
+- `connect-src`: permissive in the validation harness; production hosts should
+  enforce per-resource and administrator policy
+
+For approved-partner or open-ecosystem servers, use the different-origin sandbox
+architecture in `host-security.md` rather than the original same-origin `srcdoc`
+prototype.
 
 ## PostMessage Protocol
 
@@ -40,15 +49,11 @@ The response field is `hostCapabilities` NOT `capabilities`. The App SDK validat
 ### Critical: Timing
 Do NOT send `tool-input` before receiving `ui/notifications/initialized`. The App is not ready until it sends this notification.
 
-## Splash System
+## Sample launch system
 
-AppHub has a splash screen system (`splash-definitions.ts`) that pre-defines sample tool arguments for each server. "Launch All Splash" fires sample tool calls to all servers simultaneously, rendering their UIs with demo data.
-
-## Port Configuration
-
-- HTTP: 3009
-- TLS: 4009
-- Downstream servers connected on their HTTP ports (3xxx) — internal network, no TLS needed
+The validation harness used reviewed sample arguments for each server. A
+production host should keep sample calls non-destructive and subject to the same
+tool authorization as normal calls.
 
 ## Testing Against AppHub
 
@@ -59,12 +64,15 @@ AppHub exposes REST API endpoints useful for testing:
 - `POST /api/splash/:serverId` — execute splash for a specific server
 - `GET /api/state`, `PUT /api/state`, `DELETE /api/state` — shared state management
 
-## Key Files
+## Reference component boundaries
 
-| File | Purpose |
+| Component | Purpose |
 |---|---|
-| `AppHubMCPapp/main.ts` | Express server, REST API |
-| `AppHubMCPapp/mcp-proxy.ts` | MCP Client connections to downstream servers |
-| `AppHubMCPapp/mcp-registry.ts` | Server registry (IDs, ports, tools) |
-| `AppHubMCPapp/splash-definitions.ts` | Per-app splash metadata + sample tool args |
-| `AppHubMCPapp/public/index.html` | Frontend with iframe bridge, tile grid, agent UI |
+| Host HTTP service | Authenticated REST surface and static host UI |
+| MCP proxy | Client connections to approved downstream servers |
+| Server registry | IDs, endpoints, tools, trust policy and status |
+| Sample definitions | Reviewed demonstration inputs |
+| Tile renderer | Different-origin iframe bridge and lifecycle |
+
+The original harness is not shipped here. Reproduce portable behavior from these
+components and the evidence note in `evidence/custom-hosts-2026-06.md`.

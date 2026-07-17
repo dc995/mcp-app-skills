@@ -26,7 +26,7 @@ interface HostProfile {
 const HOSTS: HostProfile[] = [
   {
     name: "apphub",
-    baseURL: "https://localhost:4009",
+    baseURL: process.env.CUSTOM_HOST_URL ?? "http://127.0.0.1:3000",
     expectEvalWorks: true,
     expectExternalFetchWorks: true,
     expectMicrophoneWorks: true,
@@ -58,7 +58,7 @@ for (const host of HOSTS) {
   test.describe(`${host.name} host`, () => {
 
     test("data-driven chart renders", async ({ page }) => {
-      // Should work in ALL hosts
+      // Expected across the currently configured/validated hosts
       await page.goto(host.baseURL);
       // ... render chart via tool call
       await expect(page.locator("canvas")).toBeVisible();
@@ -138,16 +138,20 @@ local HTTP MCP server in a remote host, expose it through a tunnel:
 ```bash
 # 1. Start your MCP server locally (e.g. http://localhost:3001/mcp)
 # 2. Open a public tunnel
-npx cloudflared tunnel --url http://localhost:3001
+cloudflared tunnel --url http://127.0.0.1:3001
 # 3. Copy the generated https://<random>.trycloudflare.com URL
 # 4. Register it in the host as a remote server, appending your MCP path:
 #    https://<random>.trycloudflare.com/mcp
 ```
 
 - The tunnel URL **changes on every restart** — re-register after each `cloudflared` start.
+- Install `cloudflared` from the official Cloudflare distribution and pin/verify
+  it according to your environment policy.
+- A public tunnel exposes the server to the internet. Require authentication,
+  Origin validation, tool authorization and rate limits before using it.
 - VS Code reaches `localhost` directly, so it needs no tunnel; this is only for remote hosts.
-- Remote hosts are generally **more permissive** than VS Code — treat a pass there as
-  necessary-but-not-sufficient and still validate against VS Code (the strictest host).
+- Treat a pass in one remote host as necessary-but-not-sufficient; validate every
+  declared target independently.
 - Source: [ext-apps testing guide](https://github.com/modelcontextprotocol/ext-apps/blob/main/docs/testing-mcp-apps.md).
 
 ## VS Code Testing Approach

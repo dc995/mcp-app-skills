@@ -1,13 +1,14 @@
 # Authoring an MCP App Host on the GitHub Copilot SDK
 
 Host-authoring reference for custom MCP App hosts built on the **GitHub Copilot SDK**
-(`@github/copilot-sdk`) — e.g. **CopilotHub** (`CopilotHubMCPapp/`) and **DeepSpaceMind / DSM**.
+(`@github/copilot-sdk`).
 These hosts feed MCP servers into `client.createSession({ mcpServers, … })` and let the
 Copilot agentic loop plan and call the tools, instead of orchestrating an LLM directly.
 
-Reference implementation: `CopilotHubMCPapp/` — `agent.ts` (SDK session), `mcp-proxy.ts`
-(Client proxy), `main.ts` (Express + REST), `mcp-registry.ts`, `shared-state.ts`. Contrast with
-[apphub.md](apphub.md), which orchestrates its own LLM and never uses the Copilot SDK.
+The patterns were derived through differential validation of two independent
+host adapters. The portable evidence is recorded in
+`evidence/copilot-sdk-host-2026-06.md`; product-specific source layouts are not
+part of this public skill.
 
 ## Dual-Channel Architecture
 
@@ -32,14 +33,14 @@ splash, status, and server→host sampling** through the Client proxy. You need 
 ## Client & Session Lifecycle
 
 ```ts
-import { CopilotClient, approveAll, defineTool } from "@github/copilot-sdk";
+import { CopilotClient, defineTool } from "@github/copilot-sdk";
 
 const client = new CopilotClient({ logLevel: "warning" });
 await client.start();                 // fails gracefully if Copilot CLI isn't authenticated
 
 const session = await client.createSession({
   model: "auto",                       // or an id from client.listModels()
-  onPermissionRequest: approveAll,     // host auto-approves; gate yourself if needed
+  onPermissionRequest: permissionPolicy, // approve only reviewed tools/actions
   tools: hubTools,                     // host-injected custom tools (see below)
   mcpServers,                          // buildMcpServersConfig() — see Gotcha 1
   systemMessage: { mode: "replace", content: SYSTEM_PROMPT },
@@ -57,8 +58,8 @@ await session.disconnect();           // per-request session; client stays up
 - If `client.start()` throws (CLI not installed / not `copilot auth login`'d), mark the host
   `not_configured` and degrade — don't crash.
 
-> Both gotchas below were verified by differential debugging: CopilotHub worked, DSM didn't →
-> diff the two host adapters field-by-field → the difference was exactly these two things.
+> Both gotchas below were verified empirically and are now also represented in
+> current public SDK examples. Revalidate when the SDK/CLI version changes.
 
 ## Gotcha 1 — HTTP/SSE MCP servers need an explicit `tools: ["*"]`
 
@@ -68,7 +69,7 @@ each HTTP/SSE server. If you omit it, the Copilot CLI marks the server `not_conf
 means all tools."
 
 ```ts
-// ❌ DSM did this → CLI reports mcp_servers_loaded → status: "not_configured"
+// Missing tools selection can report not_configured in affected SDK/CLI versions.
 { type: "http", url }
 
 // ✅ CopilotHub did this → status: "connected", agent can call the tools
@@ -79,8 +80,8 @@ means all tools."
   `mcp_servers_loaded` debug event; tools never appear.
 - **Fix**: default HTTP/SSE servers to `tools: ["*"]` in your `buildMcpServersConfig()`
   helper. Only narrow the array when the app spec explicitly lists tool names.
-- **Why it bites**: the empirical CLI behavior contradicts the SDK type doc — trust the
-  `mcp_servers_loaded` status, not the doc comment.
+- **Why it bites**: configuration behavior has changed across versions. Trust
+the current public docs plus the `mcp_servers_loaded` status.
 
 ## Gotcha 2 — Capture tool calls via session hooks, not the reply payload
 
@@ -118,7 +119,7 @@ const hubTools = [
   defineTool("set-shared-state", {
     description: "[Hub] Merge data into shared state (shown in the State Viewer tile)",
     parameters: { type: "object", properties: { data: { type: "object" } }, required: ["data"] },
-    skipPermission: true,                 // host-internal — no approval prompt
+    skipPermission: false,
     handler: async (args) => setState((args as { data?: object }).data ?? {}),
   }),
 ];
@@ -178,11 +179,16 @@ export async function sampleViaCopilot(reqz) {
   const tools = (reqz.tools ?? []).map((t) => defineTool(t.name, {
     description: t.description ?? `Server tool ${t.name}`,
     parameters: t.inputSchema ?? { type: "object", properties: {} },
-    skipPermission: true,
-    handler: async (args) => ({ acknowledged: true, tool: t.name, args }),
+    skipPermission: false,
+    handler: async (args) => executeAuthorizedSamplingTool(t, args),
   }));
   const prompt = reqz.messages.map((m) => `${m.role}: ${m.content?.text ?? ""}`).join("\n\n");
-  const session = await client.createSession({ model: reqz.model || "auto", onPermissionRequest: approveAll, tools, streaming: false });
+  const session = await client.createSession({
+    model: reqz.model || "auto",
+    onPermissionRequest: permissionPolicy,
+    tools,
+    streaming: false,
+  });
   try { return { model: "copilot (auto)", text: (await session.sendAndWait({ prompt }, 60_000))?.data?.content ?? "" }; }
   finally { await session.disconnect(); }
 }
@@ -227,15 +233,14 @@ doesn't block the host (`status: "connected" | "error" | "disconnected"`).
 
 ## TLS & Dev Config
 
-- Host serves **HTTPS only** (CopilotHub: port **4021**); load certs from `.certs/localhost.pem`
-  or `MCP_TLS_CERT` / `MCP_TLS_KEY`.
-- Downstream servers also use TLS (`https://localhost:<HTTP+1000>/mcp`). For self-signed dev
-  certs, set `process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"` **before** importing anything that
-  fetches — dev only, never ship it.
+- Choose HTTP loopback or HTTPS according to the deployment environment.
+- For local HTTPS, trust a development CA or configure a scoped client with the
+  exact CA. Never disable TLS verification process-wide.
 
 ## Host REST Surface (reference)
 
-CopilotHub exposes a small REST API the frontend drives; useful to mirror and to test against:
+A Copilot SDK host commonly exposes a small authenticated REST API the frontend
+drives:
 
 | Endpoint | Purpose |
 |---|---|
@@ -269,6 +274,5 @@ When "it works on my harness but not here," **diff the two host adapters that bo
 `buildMcpServersConfig()` / session wiring and compare field-by-field against the broken one;
 confirm each fix against the `mcp_servers_loaded` debug event before moving on.
 
-> Verified 2026-06-12 (DSM vs CopilotHub, `@github/copilot-sdk`, threejs MCP server).
-> Both fixes confirmed live: server flipped `not_configured → connected`, and hook-based
-> capture restored the tile.
+> Empirically validated in June 2026. See
+> `evidence/copilot-sdk-host-2026-06.md` for scope and limitations.

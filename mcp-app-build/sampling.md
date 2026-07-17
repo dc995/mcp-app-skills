@@ -52,7 +52,9 @@ const client = new Client(
   { capabilities: { sampling: {} } },        // ← REQUIRED, else the server's call rejects
 );
 client.setRequestHandler(CreateMessageRequestSchema, async (req) => {
-  const text = await runMyModel(req.params);  // your model / SDK
+  // Treat server-provided messages and offered tools as untrusted. Apply model,
+  // tool, token and permission policy before invoking the model.
+  const text = await runMyModel(applySamplingPolicy(req.params));
   return { role: "assistant", content: { type: "text", text }, model: "my-model" };
 });
 ```
@@ -80,8 +82,9 @@ try {
   });
   // NOTE: reply.content is a SINGLE content block, not an array (unless tools were sent).
   if (reply.content.type === "text") useHint(reply.content.text);
-} catch {
-  degradeGracefully();   // host has no sampling, user declined, or transport can't deliver
+} catch (error) {
+  recordSamplingFailure(error); // explicit telemetry/logging with sensitive data redacted
+  degradeGracefully();          // host declined or transport/model could not deliver
 }
 ```
 

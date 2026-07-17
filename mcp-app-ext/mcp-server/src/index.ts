@@ -4,9 +4,9 @@
  *
  * Turns the markdown skills into CALLABLE tools so any agent gets the behavior by
  * SENSING reality, not by being trusted to have read the instructions. This is a
- * runnable skeleton: the four tools below work today against the repo's own
- * `host-matrix.json` and skill files; the marked extension points are where you
- * add deeper validation (e.g. static-scan an app dir, run cross-host checks).
+ * runnable policy server: the tools below work against the repo's own
+ * `host-matrix.json` and skill files. It also validates the matrix, intersects
+ * multiple hosts and performs bounded compatibility/security scans.
  *
  * Transport: stdio (works in every MCP host). Run with `npm start` and register:
  *   { "mcp-app-ext": { "type": "stdio", "command": "node",
@@ -15,33 +15,28 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { readFile } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import {
+  FEATURE_PATHS,
+  getCapabilityStatus,
+  loadMatrix,
+  validateMatrix,
+  type Matrix,
+} from "./matrix.js";
+import { parseScanRoots, scanApp } from "./scan.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // {dist,src}/ → mcp-server/ → mcp-app-ext/ → repo root (three levels up).
 const SKILLS_ROOT = path.resolve(HERE, "..", "..", "..");
 const HOSTS_DIR = path.join(SKILLS_ROOT, "mcp-app-hosts");
 const MATRIX_PATH = path.join(HOSTS_DIR, "host-matrix.json");
-
-/** Map a human "planned feature" to the host-matrix `features` key it depends on. */
-const FEATURE_KEYS: Record<string, string> = {
-  eval: "eval",
-  "new-function": "new-function",
-  "cdn-script": "cdn-script-tags",
-  "external-fetch": "fetch-external",
-  "external-media": "external-media-src",
-  "media-autoplay": "media-autoplay",
-  "web-speech": "web-speech-synthesis",
-  "nested-iframes": "nested-iframes",
-  webgl: "webgl",
-  canvas: "canvas-2d",
-  "web-workers": "web-workers",
-  websockets: "websockets",
-  "dynamic-import": "dynamic-import",
-};
+const SCAN_ROOTS = parseScanRoots(
+  process.env.MCP_APP_SCAN_ROOTS,
+  process.cwd(),
+);
 
 const GUIDANCE_FILES: Record<string, string> = {
   build: "mcp-app-build/SKILL.md",
@@ -50,6 +45,10 @@ const GUIDANCE_FILES: Record<string, string> = {
   patterns: "mcp-app-build/patterns.md",
   sampling: "mcp-app-build/sampling.md",
   audit: "mcp-app-audit/SKILL.md",
+  security: "mcp-app-security/SKILL.md",
+  "security-threat-model": "mcp-app-security/threat-model.md",
+  "host-security": "mcp-app-security/host-security.md",
+  "server-security": "mcp-app-security/server-security.md",
   hosts: "mcp-app-hosts/SKILL.md",
   "host-rendering": "mcp-app-hosts/host-rendering.md",
   "copilot-sdk-host": "mcp-app-hosts/copilot-sdk-host.md",
@@ -57,17 +56,83 @@ const GUIDANCE_FILES: Record<string, string> = {
   test: "mcp-app-test/SKILL.md",
 };
 
-type Matrix = { version?: string; hosts?: Record<string, { name?: string; features?: Record<string, unknown> }> };
-
-async function loadMatrix(): Promise<Matrix> {
-  if (!existsSync(MATRIX_PATH)) throw new Error(`host-matrix.json not found at ${MATRIX_PATH}`);
-  return JSON.parse(await readFile(MATRIX_PATH, "utf-8")) as Matrix;
-}
-
 const ok = (text: string) => ({ content: [{ type: "text" as const, text }] });
 const fail = (text: string) => ({ content: [{ type: "text" as const, text }], isError: true });
 
-const server = new McpServer({ name: "mcp-app-ext", version: "0.1.0" });
+async function isWithinAllowedScanRoot(appPath: string): Promise<boolean> {
+  const requested = await realpath(path.resolve(appPath));
+  const allowedRoots = await Promise.all(
+    SCAN_ROOTS.map(async (root) => {
+      try {
+        return await realpath(root);
+      } catch {
+        return root;
+      }
+    }),
+  );
+  return allowedRoots.some((root) => {
+    const relative = path.relative(root, requested);
+    return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+  });
+}
+
+const server = new McpServer({ name: "mcp-app-ext", version: "0.2.0" });
+
+type CompatibilityFinding = {
+  host: string;
+  feature: string;
+  status: "blocked" | "unvalidated";
+  alternative: string;
+};
+
+function evaluateCompatibility(
+  matrix: Matrix,
+  hosts: string[],
+  features: string[],
+): {
+  verdict: "PASS" | "BLOCKED" | "UNKNOWN";
+  findings: CompatibilityFinding[];
+} {
+  const unknownFeatures = features.filter((feature) => !FEATURE_PATHS[feature]);
+  if (unknownFeatures.length > 0) {
+    throw new Error(
+      `Unknown features: ${unknownFeatures.join(", ")}. Known: ${Object.keys(FEATURE_PATHS).join(", ")}`,
+    );
+  }
+
+  const findings: CompatibilityFinding[] = [];
+  for (const hostId of hosts) {
+    const host = matrix.hosts[hostId];
+    if (!host) {
+      throw new Error(`Unknown host '${hostId}'. Known: ${Object.keys(matrix.hosts).join(", ")}`);
+    }
+    for (const feature of features) {
+      const status = getCapabilityStatus(host, feature);
+      if (status === false) {
+        findings.push({
+          host: hostId,
+          feature,
+          status: "blocked",
+          alternative: SAFE_ALTERNATIVE[feature] ?? DEFAULT_ALTERNATIVE,
+        });
+      } else if (status !== true) {
+        findings.push({
+          host: hostId,
+          feature,
+          status: "unvalidated",
+          alternative: "Treat as unavailable until a dated host probe records evidence.",
+        });
+      }
+    }
+  }
+
+  const verdict = findings.some((finding) => finding.status === "blocked")
+    ? "BLOCKED"
+    : findings.length > 0
+      ? "UNKNOWN"
+      : "PASS";
+  return { verdict, findings };
+}
 
 // 1) list_host_capabilities — the source-of-truth matrix, all hosts or one.
 server.registerTool(
@@ -82,10 +147,10 @@ server.registerTool(
   },
   async ({ host }) => {
     try {
-      const matrix = await loadMatrix();
+      const matrix = await loadMatrix(MATRIX_PATH);
       if (host) {
-        const h = matrix.hosts?.[host];
-        if (!h) return fail(`Unknown host '${host}'. Known: ${Object.keys(matrix.hosts ?? {}).join(", ")}`);
+        const h = matrix.hosts[host];
+        if (!h) return fail(`Unknown host '${host}'. Known: ${Object.keys(matrix.hosts).join(", ")}`);
         return ok(JSON.stringify({ host, ...h }, null, 2));
       }
       return ok(JSON.stringify(matrix, null, 2));
@@ -103,8 +168,8 @@ server.registerTool(
     description:
       "Given a target host and the features an app plans to use, return a pass/fail verdict with " +
       "the specific blockers and a safer alternative for each. This is the objective pre-build gate — " +
-      "call it BEFORE writing app code. Feature names: " +
-      Object.keys(FEATURE_KEYS).join(", ") + ".",
+      "call it BEFORE writing app code. Unvalidated capabilities return UNKNOWN. Feature names: " +
+      Object.keys(FEATURE_PATHS).join(", ") + ".",
     inputSchema: {
       host: z.string().describe("Target host id, e.g. 'vscode'."),
       features: z.array(z.string()).describe("Planned features, from the known feature names."),
@@ -112,31 +177,18 @@ server.registerTool(
   },
   async ({ host, features }) => {
     try {
-      const matrix = await loadMatrix();
-      const h = matrix.hosts?.[host];
-      if (!h) return fail(`Unknown host '${host}'. Known: ${Object.keys(matrix.hosts ?? {}).join(", ")}`);
-      const feats = h.features ?? {};
-      const blockers: { feature: string; alternative: string }[] = [];
-      for (const f of features) {
-        const key = FEATURE_KEYS[f];
-        if (!key) {
-          blockers.push({ feature: f, alternative: `Unknown feature '${f}'. Known: ${Object.keys(FEATURE_KEYS).join(", ")}` });
-          continue;
-        }
-        if (feats[key] !== true) blockers.push({ feature: f, alternative: SAFE_ALTERNATIVE[f] ?? "Use a data-driven / server-proxied approach (see mcp-app-build/patterns.md)." });
-      }
-      const verdict = blockers.length === 0 ? "PASS" : "BLOCKED";
+      const matrix = await loadMatrix(MATRIX_PATH);
+      const result = evaluateCompatibility(matrix, [host], features);
       return ok(
         JSON.stringify(
           {
-            verdict,
+            ...result,
             host,
-            evidence: `host-matrix.json@${matrix.version ?? "unknown"}`,
-            blockers,
+            evidence: `host-matrix.json@${matrix.revision}`,
             advice:
-              blockers.length === 0
-                ? "All planned features are supported on this host."
-                : "Rewrite each blocker per its alternative, or target a more permissive host. VS Code is the strictest validated host — pass there and you pass everywhere.",
+              result.verdict === "PASS"
+                ? "All requested capabilities are supported by dated evidence for this host."
+                : "Resolve blocked capabilities and validate unknown capabilities on every target host.",
           },
           null,
           2,
@@ -153,13 +205,91 @@ const SAFE_ALTERNATIVE: Record<string, string> = {
   "new-function": "Same as eval — no runtime code generation. Drive the UI from structured data.",
   "cdn-script": "Bundle the library with npm + vite-plugin-singlefile instead of an external <script src>.",
   "external-fetch": "Proxy the request through the MCP server (server.ts fetches, returns via tool result).",
-  "external-media": "Proxy media bytes through the server and return same-origin (data: URL / embedded resource).",
+  "external-media": "Use host-mediated playback or a host-approved same-origin media resource; enforce server egress limits.",
   "media-autoplay": "Play on a user gesture; do not rely on autoplay in a sandboxed frame.",
   "web-speech": "Pre-synthesize on the server or degrade gracefully; Web Speech is blocked in strict hosts.",
   "nested-iframes": "Flatten the UI; strict hosts disallow nested iframes.",
+  "window-open": "Use host-mediated ui/open-link or a server-side authorization flow.",
+  microphone: "Provide text/file input and request a host permission only where explicitly supported.",
+  camera: "Provide file upload or manual input fallback.",
+  geolocation: "Use explicit user-entered location or a server-side approved lookup.",
+  "clipboard-write": "Provide a selectable text fallback and require a user gesture.",
+  sampling: "Ship a deterministic Display-Frame fallback.",
+  elicitation: "Use a normal app form or plain tool input fallback.",
+  "resource-subscriptions": "Use polling or explicit refresh where subscriptions are unavailable.",
 };
+const DEFAULT_ALTERNATIVE =
+  "Use a structured, least-privilege, server-mediated approach and retain a fallback.";
 
-// 3) get_guidance — return the relevant skill section text (the same source the
+// 3) check_multi_host_compatibility — intersection across declared targets.
+server.registerTool(
+  "check_multi_host_compatibility",
+  {
+    title: "Check compatibility across target hosts",
+    description:
+      "Intersect planned features across multiple target hosts. Returns BLOCKED for known " +
+      "unsupported capabilities and UNKNOWN for unvalidated/variable capabilities.",
+    inputSchema: {
+      hosts: z.array(z.string()).min(1),
+      features: z.array(z.string()),
+    },
+  },
+  async ({ hosts, features }) => {
+    try {
+      const matrix = await loadMatrix(MATRIX_PATH);
+      const result = evaluateCompatibility(matrix, hosts, features);
+      return ok(
+        JSON.stringify(
+          { ...result, hosts, evidence: `host-matrix.json@${matrix.revision}` },
+          null,
+          2,
+        ),
+      );
+    } catch (error) {
+      return fail(error instanceof Error ? error.message : String(error));
+    }
+  },
+);
+
+// 4) validate_host_matrix — schema + completeness/evidence consistency.
+server.registerTool(
+  "validate_host_matrix",
+  {
+    title: "Validate the host capability matrix",
+    description:
+      "Validate matrix structure, feature completeness, revision dates and local evidence links.",
+    inputSchema: {},
+  },
+  async () => ok(JSON.stringify(await validateMatrix(MATRIX_PATH, SKILLS_ROOT), null, 2)),
+);
+
+// 5) scan_app — bounded static compatibility/security scan.
+server.registerTool(
+  "scan_app",
+  {
+    title: "Scan an MCP App directory",
+    description:
+      "Run a bounded heuristic scan for CSP, iframe, transport, SSRF, OAuth, XSS, TLS and secret risks. " +
+      "Returns file/line/rule metadata without returning source contents.",
+    inputSchema: {
+      appPath: z.string().min(1).describe("Absolute or current-process-relative app directory."),
+    },
+  },
+  async ({ appPath }) => {
+    try {
+      if (!(await isWithinAllowedScanRoot(appPath))) {
+        return fail(
+          `Scan path is outside MCP_APP_SCAN_ROOTS. Allowed roots: ${SCAN_ROOTS.join(", ")}`,
+        );
+      }
+      return ok(JSON.stringify(await scanApp(appPath), null, 2));
+    } catch (error) {
+      return fail(error instanceof Error ? error.message : String(error));
+    }
+  },
+);
+
+// 6) get_guidance — return the relevant skill section text (the same source the
 //    agent would read), so a host with this server connected needs no skill files.
 server.registerTool(
   "get_guidance",
@@ -179,7 +309,7 @@ server.registerTool(
   },
 );
 
-// 4) scaffold — point at the canonical templates for a stack layer. EXTENSION
+// 7) scaffold — point at the canonical templates for a stack layer. EXTENSION
 //    POINT: return ready-to-write file contents here once you've parameterized
 //    them (name, port, framework) instead of only pointing at scaffold.md.
 server.registerTool(
@@ -193,9 +323,9 @@ server.registerTool(
   },
   async ({ layer }) => {
     const map: Record<string, { from: string; note: string }> = {
-      server: { from: "mcp-app-build/scaffold.md", note: "MCP server: tool + ui:// resource, stateful transport if the app is stateful." },
+      server: { from: "mcp-app-build/scaffold.md", note: "MCP server: secure transport boundary + tool + ui:// resource; stateful transport if required." },
       app: { from: "mcp-app-build/scaffold.md", note: "UI resource (main.ts/html): consume host styles, data-driven render, single-file bundle." },
-      host: { from: "mcp-app-hosts/host-rendering.md", note: "Web/React host: iframe sandbox flags, CSP, dual _meta read, theming, bridge handshake." },
+      host: { from: "mcp-app-hosts/host-rendering.md", note: "Web/React host: different-origin sandbox, CSP, dual _meta read, theming, validated bridge." },
       session: { from: "mcp-app-hosts/copilot-sdk-host.md", note: "Bind & resume a session; re-hydrate tiles; host-side handle-relay repair." },
     };
     const entry = map[layer];
@@ -208,7 +338,7 @@ server.registerTool(
 async function main(): Promise<void> {
   await server.connect(new StdioServerTransport());
   // stderr is safe for logs on stdio transport; stdout carries the protocol.
-  console.error("mcp-app-ext server ready (stdio). Tools: list_host_capabilities, check_compatibility, get_guidance, scaffold.");
+  console.error("mcp-app-ext server ready (stdio). Tools: list_host_capabilities, check_compatibility, check_multi_host_compatibility, validate_host_matrix, scan_app, get_guidance, scaffold.");
 }
 
 main().catch((e) => {

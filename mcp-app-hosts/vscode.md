@@ -80,12 +80,12 @@ media-src 'self'        (external audio/video URLs blocked)
 | WebSockets | Supported (via server proxy) |
 | `<img src>` to external URLs | Generally works (img-src is more permissive) — this is why Leaflet tiles load |
 
-## Port and TLS Configuration
+## Endpoint configuration
 
-VS Code connects to MCP servers via TLS. Convention in this workspace:
-- HTTP port: `3xxx` (e.g., 3006 for GetTime)
-- TLS port: `3xxx + 1000` (e.g., 4006)
-- `.vscode/mcp.json` points to TLS ports
+VS Code supports configured HTTP and HTTPS MCP endpoints. TLS and port layout are
+environment choices, not MCP Apps requirements. Loopback HTTP is suitable for
+many local development setups; remote endpoints should use HTTPS and
+authentication.
 ## Registering & Managing the Server in VS Code
 
 ### `mcp.json` shape
@@ -95,13 +95,14 @@ TLS port:
 ```jsonc
 {
   "servers": {
-    "gettime": { "type": "http", "url": "https://localhost:4006/mcp" }
+    "example": { "type": "http", "url": "http://127.0.0.1:3000/mcp" }
   }
 }
 ```
 Other ways to add a server: Extensions view → search `@mcp` (gallery install, user or
-"Install in Workspace"); or `MCP: Add Server` for a guided flow. Avoid hardcoding secrets — use
-input variables / env files.
+"Install in Workspace"); or `MCP: Add Server` for a guided flow. Avoid hardcoding
+secrets. Prefer integrated identity, an OS credential store, managed identity or
+a vault reference resolved by the server at execution time.
 
 ### Trust
 On first start VS Code shows a **trust dialog**; the server won't run (its tools, prompts,
@@ -166,28 +167,30 @@ if (caps?.sandbox?.permissions?.microphone) {
 }
 ```
 
-### Media (audio / video) → server-proxied bytes
+### Media (audio / video) → host-mediated or validated local resource
 `media-src 'self'` blocks external media URLs and there is no `autoplay` grant, so a
-media app cannot point an element at a remote URL. Fetch the media **on the server** and
-hand the UI inline bytes it can render same-origin:
+media app cannot point an element at a remote URL. Fetching on the server avoids
+UI network egress, but `data:`/`blob:` playback still depends on the host's actual
+`media-src` policy. Do not claim that inline bytes automatically satisfy `'self'`.
+
+Preferred options:
+
+1. Host-mediated playback.
+2. A host-rehosted same-origin media URL.
+3. Small inline bytes only after a host-specific probe confirms the scheme.
+
 ```typescript
-// UI: never set vid.src to an external URL — ask the server for bytes
+// UI: ask the server/host for an approved media resource, never fetch an
+// arbitrary external URL directly.
 const res = await app.callServerTool({ name: "fetch-media", arguments: { url } });
-// Server returned a data: URL (or embedded-resource blob) in the tool result
-const dataUrl = (res._meta as { dataUrl?: string })?.dataUrl;
-if (dataUrl) vid.src = dataUrl;            // same-origin data: passes media-src 'self'
+const mediaUrl = (res._meta as { mediaUrl?: string })?.mediaUrl;
+if (mediaUrl) vid.src = mediaUrl;
 // Playback still needs a user gesture (no autoplay) — wire play() to a click, not onload.
 ```
-```typescript
-// Server: fetch the media and return bytes (mind a size ceiling — base64 inflates ~33%;
-// for large media prefer chunked/embedded resources over a single data: URL).
-const bytes = Buffer.from(await (await fetch(url)).arrayBuffer());
-return { content: [{ type: "text", text: "ok" }],
-  _meta: { dataUrl: `data:${mime};base64,${bytes.toString("base64")}` } };
-```
-> For text-to-speech, generate the audio server-side (the server has full network/runtime
-> access) and return the rendered audio bytes the same way, rather than relying on the
-> sandboxed `speechSynthesis`.
+
+The server must allowlist destinations, block private/metadata addresses,
+revalidate redirects, enforce timeout/content-type/size limits, and return a
+host-approved resource reference. See `mcp-app-security/server-security.md`.
 
 ## OAuth in a Restricted Host
 
@@ -202,7 +205,8 @@ permissive hosts, so build it this way once.
 1. **Server owns OAuth.** The MCP server (Express) exposes provider-neutral routes:
    - `GET /auth/start` → redirects the browser to the provider's authorize URL
      (Authorization Code + PKCE; `redirect_uri` points back at the server)
-   - `GET /auth/callback` → exchanges the code for tokens, stores them
+   - `GET /auth/callback` → validates single-use `state`, exchanges the code with
+     the matching PKCE verifier, stores tokens
      **server-side only**, and renders a "you can close this tab" page
    - `GET /auth/status` → returns `{ authenticated: boolean }`
 2. **UI starts auth without a popup.** Render a normal link/button whose href is
@@ -219,8 +223,8 @@ permissive hosts, so build it this way once.
    ```
 4. **Tokens never reach the UI.** Access/refresh tokens live only on the server.
    The UI sees a boolean and any non-sensitive profile fields the server chooses to
-   surface via the tool result `_meta`. Credentials come from environment variables,
-   never hardcoded.
+   surface via the tool result `_meta`. Credentials are resolved from an integrated
+   identity, credential store or vault reference, never hardcoded.
 
 > Validated with an Authorization-Code-+-PKCE provider login driven entirely from
 > server routes, with the UI polling an app-only `status` tool. Because the token
@@ -244,9 +248,8 @@ the server afterward is not enough.
    host's cached connection.
 2. **Reconnect in the host**: Command Palette → **MCP: List Servers** → pick the
    server → **Restart**. Only then will the next tool call succeed.
-3. **TLS must match `mcp.json`.** Entries use `https://localhost:<HTTP+1000>`. A
-   server started *without* TLS only listens on plain HTTP, so the `https://` URL
-   fails. The TLS port is always **HTTP port + 1000**.
+3. **Endpoint must match `mcp.json`.** Confirm the configured scheme, address,
+   port and path exactly match the listening server.
 
 ## Runtime Host Detection
 
@@ -255,10 +258,8 @@ const app = new App({ name: "My App", version: "1.0.0" });
 await app.connect();
 const caps = app.getHostCapabilities();
 
-// Check CSP
-const canEval = caps?.sandbox?.csp?.connectDomains !== undefined; // rough proxy
-// Better: try/catch eval
-try { new Function("return 1")(); } catch { /* VS Code */ }
+// Do not probe CSP with eval/new Function. Use declared capabilities and retain
+// the structured-data/server-proxy fallback.
 
 // Check permissions
 if (!caps?.sandbox?.permissions?.microphone) {
@@ -273,6 +274,5 @@ if (!caps?.sandbox?.permissions?.microphone) {
 - VS Code — MCP Apps support (blog): https://code.visualstudio.com/blogs/2026/01/26/mcp-apps-support
 - ext-apps — Testing MCP Apps: https://github.com/modelcontextprotocol/ext-apps/blob/main/docs/testing-mcp-apps.md
 
-> Media CSP/sandbox constraints above were verified firsthand in `mcpapps1`
-> (SayMCPapp / VideoResourceMCPapp / SheetMusicMCPapp, 2026-06-17). VS Code's iframe policy is
-> fixed; the `_meta.ui.csp` / `sandbox.permissions` opt-ins are spec'd but not yet honored.
+> Media CSP/sandbox constraints above are empirical observations from June 2026,
+> recorded in `evidence/vscode-2026-06.md`. Revalidate on host/runtime updates.

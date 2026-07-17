@@ -1,0 +1,49 @@
+name: Host capability observation
+description: Propose a dated, reproducible update to the MCP App host matrix.
+title: "[HOST] "
+labels: ["host-evidence"]
+body:
+  - type: input
+    id: host
+    attributes:
+      label: Host and version
+      placeholder: VS Code Insiders 1.x, host build, browser engine
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: OS, MCP SDK, MCP Apps SDK, transport
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Include the capability tested and the exact steps.
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Observed result
+      description: Include exact errors where safe; redact credentials and private data.
+    validations:
+      required: true
+  - type: dropdown
+    id: evidence
+    attributes:
+      label: Evidence type
+      options:
+        - Upstream documentation/specification
+        - Empirical reproduction
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Public-safety confirmation
+      options:
+        - label: I removed secrets, private source code, personal data and machine-specific paths.
+          required: true

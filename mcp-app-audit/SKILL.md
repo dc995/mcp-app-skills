@@ -43,6 +43,15 @@ Check these files in the app:
 - [ ] Missing `RESOURCE_MIME_TYPE` on resource registration
 - [ ] Tools without text content fallback for non-UI hosts
 - [ ] `server.server.createMessage(...)` / `elicitInput(...)` / `resources/subscribe` **while** `main.ts` uses a stateless transport (`sessionIdGenerator: undefined`) — these server→client requests time out (`-32001`). Needs the stateful transport + a Display-Frame fallback. See `mcp-app-build/sampling.md`.
+- [ ] Streamable HTTP without Origin validation, authentication or request/session limits
+- [ ] Server proxy tools accepting arbitrary URLs (SSRF)
+- [ ] OAuth callbacks without single-use `state` + PKCE bound to the initiating session
+
+**Host/UI bridge** — look for:
+- [ ] Same-origin `srcdoc` combined with `allow-scripts allow-same-origin`
+- [ ] `postMessage` handlers that do not verify `event.source` and validate JSON-RPC
+- [ ] Tool/model content assigned to `innerHTML` without sanitization
+- [ ] Untrusted tool/UI text passed to model context as instructions
 
 ### Step 2: Classify Each Finding
 
@@ -56,6 +65,9 @@ Check these files in the app:
 | No text fallback in tool result | [PROTOCOL] | Degraded in non-UI hosts |
 | CSP relaxation in `_meta` | [CSP] | Cosmetic (VS Code ignores it) |
 | Sampling/elicitation on stateless transport | [TRANSPORT] | Breaking — server→client request times out (-32001) |
+| Same-origin active iframe content | [SECURITY] | Critical — host-origin compromise |
+| Arbitrary server-side URL fetch | [SECURITY] | Critical — SSRF/data exfiltration |
+| Missing Origin/session controls | [SECURITY] | Critical for network-reachable servers |
 
 ### Step 3: Apply Rewrite Patterns
 
@@ -69,7 +81,7 @@ Check these files in the app:
 <script src="https://cdn.vendor.example/sdk/v3/sdk.min.js"></script>
 ```
 
-**After** (works everywhere):
+**After** (compatible with the validated host set):
 ```bash
 npm install the-library  # an npm-bundleable equivalent
 ```
@@ -91,20 +103,32 @@ import { thing } from "the-library";
 const data = await fetch("https://api.example.com/search?q=" + query);
 ```
 
-**After** (works everywhere):
+**After** (compatible with the validated host set):
 ```typescript
 // server.ts — add app-only tool
 registerAppTool(server, "search", {
   inputSchema: { query: z.string() },
   _meta: { ui: { resourceUri, visibility: ["app"] } },
 }, async ({ query }) => {
-  const resp = await fetch(`https://api.example.com/search?q=${encodeURIComponent(query)}`);
-  return { content: [{ type: "text", text: JSON.stringify(await resp.json()) }] };
+  const resp = await fetch(`https://api.example.com/search?q=${encodeURIComponent(query)}`, {
+    signal: AbortSignal.timeout(10_000),
+    redirect: "error",
+  });
+  if (!resp.ok) throw new Error(`Upstream search failed: ${resp.status}`);
+  return {
+    content: [{
+      type: "text",
+      text: JSON.stringify(await readJsonWithLimit(resp, 1_000_000)),
+    }],
+  };
 });
 
 // src/mcp-app.ts
 const result = await app.callServerTool({ name: "search", arguments: { query } });
 ```
+
+For user-selected destinations, add the SSRF controls from
+`mcp-app-security/server-security.md`; never substitute `fetch(userUrl)`.
 
 ### Pattern C: eval/new Function → Data-Driven Rendering
 
@@ -117,7 +141,7 @@ app.ontoolinput = (params) => {
 };
 ```
 
-**After** (works everywhere):
+**After** (compatible with the validated host set):
 ```typescript
 // Define structured input schema
 inputSchema: {
@@ -144,14 +168,15 @@ const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 startTranscription(stream);
 ```
 
-**After** (works everywhere):
+**After** (compatible with the validated host set):
 ```typescript
 const caps = app.getHostCapabilities();
 if (caps?.sandbox?.permissions?.microphone) {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     startTranscription(stream);
-  } catch {
+  } catch (error) {
+    logPermissionFallback(error);
     showTextInput();
   }
 } else {
@@ -201,3 +226,5 @@ After audit, produce:
 2. **Rewrite plan**: specific patterns to apply for each red finding
 3. **Host support declaration**: which hosts the app can target after rewrites
 4. **HIT entry**: if a new constraint was discovered, record via HIT process
+5. **Security report**: invoke `mcp-app-security` for host, transport, auth,
+   external-fetch or model-context findings

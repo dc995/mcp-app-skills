@@ -19,7 +19,9 @@ SERVERS='["http://localhost:3001/mcp"]' npm start
 
 ## Capabilities
 
-Most permissive environment — standard browser with no additional sandbox restrictions.
+Reference browser host intended for protocol testing. Treat its exact CSP,
+sandbox and capability behavior as versioned upstream behavior rather than a
+universal browser baseline.
 
 - `eval()` / `new Function()`: Yes
 - External CDN scripts: Yes

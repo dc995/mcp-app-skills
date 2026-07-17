@@ -10,11 +10,13 @@ Ask: "Which hosts will this app run in?"
 - **AppHub only** → nearly unrestricted
 - **CopilotHub only** → permissive (same profile as AppHub) + supports a server→host sampling
   bridge; see [../mcp-app-hosts/copilot-sdk-host.md](../mcp-app-hosts/copilot-sdk-host.md)
-- **Multi-host** (VS Code + AppHub + others) → must use Universal Safe Set
+- **Multi-host** (VS Code + AppHub + others) → start with the Validated Portable Set
 - **Unknown** → assume multi-host (safest default)
 
 > Authoring the host itself (not just targeting one)? See
 > [../mcp-app-hosts/SKILL.md](../mcp-app-hosts/SKILL.md) → "Authoring a Host".
+> Also run `mcp-app-security` and declare whether UI resources are trusted
+> first-party, approved-partner, or arbitrary/untrusted.
 
 ## Step 2: Feature Scan
 
@@ -47,7 +49,7 @@ For each planned feature, check against the host matrix:
 | Feature | VS Code | AppHub | Standalone |
 |---|---|---|---|
 | `fetch("https://external-api.com")` | **BLOCKED** | OK | OK |
-| `fetch` to localhost MCP server | OK | OK | OK |
+| Direct UI `fetch` to localhost | Host-dependent | OK | OK |
 | `app.callServerTool()` | OK | OK | OK |
 
 **If your UI needs external data:**
@@ -76,7 +78,7 @@ For each planned feature, check against the host matrix:
 |---|---|---|---|---|
 | Translation API | Yes | N/A (no iframe grant) | OK | **BLOCKED** |
 | Web Bluetooth | Yes | **BLOCKED** | OK | **BLOCKED** |
-| SubtleCrypto | Yes | OK (webview is secure) | OK | **BLOCKED** |
+| SubtleCrypto | Yes | OK (webview is secure) | OK | Usually OK on loopback; verify |
 | Web Share | Yes | **BLOCKED** | OK | **BLOCKED** |
 
 **If your app needs secure-context APIs:**
@@ -108,7 +110,7 @@ Needs browser permission (mic/camera/geo)?
   └─ YES → Build fallback UI + runtime HostCapabilities check
 
 Everything bundleable + data-driven + server-proxied?
-  └─ YES → ✅ Safe for all hosts
+  └─ YES → Compatible with the currently validated host set; still test targets
 ```
 
 ## Step 4: Record Decision
@@ -117,3 +119,6 @@ If you determined the app has host limitations:
 1. Document in the app's README which hosts it supports
 2. Add `test.fail()` annotations for hosts where features are expected to break
 3. If a new constraint was discovered, follow the HIT process (`mcp-app-hosts/hit-process.md`)
+4. If the app uses OAuth, external server fetches, model-context updates,
+   sensitive tools or a custom host, record the `mcp-app-security` threat model
+   and negative tests

@@ -23,7 +23,7 @@ tool result  ──▶  read _meta.ui.resourceUri  ──▶  resources/read (MC
      │                                                     │
      │                                              UI HTML (single file)
      ▼                                                     ▼
- structured result for the model            <iframe srcdoc=HTML sandbox=…>
+ structured result for the model            <iframe src=sandbox-url sandbox=…>
                                                            │
                                        postMessage handshake (ui/initialize …)
                                                            │
@@ -32,8 +32,9 @@ tool result  ──▶  read _meta.ui.resourceUri  ──▶  resources/read (MC
 
 Two channels are involved: the **agent/session** surfaces the tool call + result,
 and a separate **MCP `Client`** reads the `ui://` resource (the agent session
-typically does *not* expose `resources/read`). The tile is an **iframe whose
-`srcdoc` is the app's bundled HTML**, driven by a JSON-RPC postMessage bridge.
+typically does *not* expose `resources/read`). The tile is an iframe served through a different-origin sandbox document, driven
+by a JSON-RPC postMessage bridge. A first-party-only prototype may use `srcdoc`,
+but that is a trust decision rather than the portable default.
 
 ## 2. Read the UI resource URI from BOTH `_meta` shapes
 
@@ -62,37 +63,49 @@ function readUiResourceUri(meta: Record<string, unknown> | undefined): string | 
 - The same dual-shape rule applies anywhere you inspect `_meta` for UI hints
   (e.g. a per-resource CSP). Don't hard-code one path.
 
-## 3. iframe sandbox flags — the difference between "renders" and "is interactive"
+## 3. iframe isolation — trust mode comes before sandbox flags
 
-A tile mounted with only `sandbox="allow-scripts"` will **display** but silently
-lose interactivity that depends on pointer capture or popups — drag-to-orbit
-(Three.js `OrbitControls`), drag sliders, color pickers, and OAuth `window.open`
-all break with no console error.
+An MCP App host may render HTML from a server released by somebody else. Treat
+that HTML as untrusted unless the host explicitly operates in a first-party-only
+mode.
+
+The secure architecture is a **different-origin sandbox proxy**:
+
+```text
+https://host.example          authenticated host UI and APIs
+https://mcp-sandbox.example   isolated App document; no host cookies or secrets
+```
 
 ```html
-<!-- Minimum set for an interactive tile -->
 <iframe
-  sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
-  srcdoc="…">
+  sandbox="allow-scripts allow-same-origin"
+  src="https://mcp-sandbox.example/render/<opaque-id>">
 </iframe>
 ```
 
-| Flag | Why a tile needs it |
-|---|---|
-| `allow-scripts` | run the app at all |
-| `allow-same-origin` | **`setPointerCapture`**, canvas pointer events, `localStorage`, workers — drag/orbit dies without it |
-| `allow-popups` + `allow-popups-to-escape-sandbox` | `window.open` for sign-in / "open in new tab" flows |
+`allow-scripts` + `allow-same-origin` is acceptable only because the framed
+document is already cross-origin from the host. Do **not** combine those flags
+with same-origin `srcdoc` and assume CSP provides equivalent isolation: the app
+can inherit the host origin and reach host DOM/storage.
 
-> Security note: `allow-scripts` + `allow-same-origin` together let the framed
-> document reach its own origin. Keep tiles on a **srcdoc / `about:srcdoc`** origin
-> (not your app's real origin) and rely on **CSP** (next section) for isolation,
-> rather than withholding `allow-same-origin` and breaking every interactive app.
+Grant additional capabilities per reviewed resource:
+
+| Flag | Policy |
+|---|---|
+| `allow-scripts` | Required for the app runtime |
+| `allow-same-origin` | Only on the dedicated sandbox origin, when storage/workers require it |
+| `allow-popups` | Only for approved link flows |
+| `allow-popups-to-escape-sandbox` | Avoid; prefer host-mediated `ui/open-link` |
+
+For a trusted first-party prototype, same-origin `srcdoc` may be a conscious
+tradeoff. Label that mode explicitly and never reuse it for arbitrary servers.
+See `mcp-app-security/host-security.md`.
 
 ## 4. CSP for the tile frame — and honoring a per-resource opt-in
 
-Set a Content-Security-Policy on the framed document (via a `<meta http-equiv>`
-injected into the `srcdoc`, or a header if you serve the resource). A workable
-baseline that still allows inline app code:
+Set a Content-Security-Policy on the sandbox document. Prefer a response header
+from the sandbox service; a `<meta http-equiv>` is a first-party prototype
+fallback. A workable baseline that still allows inline app code:
 
 ```
 default-src 'none';
@@ -102,11 +115,14 @@ img-src    data: blob:;
 font-src   data:;
 connect-src 'none';                /* widen only per app, see below */
 frame-src  data: blob:;            /* needed if the app embeds its own frames */
+object-src 'none';
+base-uri 'none';
+form-action 'none';
 ```
 
 - Some apps declare a needed relaxation in `_meta` (e.g. an extra `connect-src` or
-  `frame-src`). Read it and **extend** the CSP for that one resource rather than
-  loosening the global policy.
+  `frame-src`). Intersect it with administrator policy; never automatically trust
+  resource-declared domains.
 - Avoid `'unsafe-eval'`. Apps that need `eval`/`new Function()` (some charting and
   3D widget libraries use them internally) should be flagged in audit, not enabled
   host-wide.
@@ -141,7 +157,10 @@ function rehostBlockedDataUrl(dataUrl: string, store: BlobStore): string {
 Most apps render **transparent** and inherit color from the host via CSS custom
 properties they reference but never define. To theme them you must do **both**:
 
-**(a) Inject host variables + `color-scheme` into the app document** (`srcdoc`):
+**(a) Inject host variables + `color-scheme` into the sandbox document.** The
+example below is appropriate inside the dedicated sandbox service (or a
+first-party-only prototype), not as a reason to give arbitrary `srcdoc` the host
+origin:
 
 ```ts
 function prepareSrcdoc(appHtml: string, mode: "dark" | "light"): string {
@@ -167,7 +186,7 @@ shows through in dark mode** as a white box around your themed content. Set it:
 ```tsx
 <iframe
   style={{ background: hostStyleVariables(mode)["--color-background-primary"] }}
-  /* …sandbox, srcdoc… */
+  /* …sandbox and different-origin src… */
 />
 ```
 
@@ -273,6 +292,9 @@ token round-tripped through a language model is inherently fragile.
 - **Bridge timing.** Do not send `tool-input` / `tool-result` before the app sends
   its **`ui/notifications/initialized`** — that notification is the render-ready
   signal. Sending early is dropped silently and the tile stays blank.
+- **Bridge validation.** Bind each bridge to the exact `iframe.contentWindow`,
+  validate every JSON-RPC message and enforce message-size/request-ID limits.
+  `event.origin` may be `"null"` for opaque sandboxes, so it is not sufficient.
 - **Handshake field name.** The initialize response uses **`hostCapabilities`**,
   not `capabilities`; the apps SDK validates with a schema and a wrong name fails
   silently.
@@ -282,10 +304,10 @@ token round-tripped through a language model is inherently fragile.
 - **Re-render on resume.** When you resume a prior session, the previous turns'
   tiles are gone from the live DOM; re-hydrate them from the persisted tool-call
   record, not from the agent reply (which carries no tool calls).
-- **Self-signed dev TLS.** When the host (HTTPS) reads `ui://` resources from
-  downstream servers on self-signed certs, set
-  `NODE_TLS_REJECT_UNAUTHORIZED = "0"` **before** importing the fetch client —
-  dev only, never ship it.
+- **Local development TLS.** Trust a local development CA (for example, mkcert)
+  or configure a scoped HTTP client with the specific development CA. Do not set
+  process-wide `NODE_TLS_REJECT_UNAUTHORIZED = "0"`; it disables verification for
+  every outbound TLS connection in the process.
 
 ## 11. Interactive tiles that borrow the host model (sampling)
 
@@ -321,9 +343,9 @@ session id) for the reverse request to resolve.
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | No tile for some apps, others fine | Only read one `_meta` shape | Read both `ui/resourceUri` and `ui.resourceUri` (§2) |
-| Tile renders but won't drag/orbit | `sandbox="allow-scripts"` only | Add `allow-same-origin allow-popups …` (§3) |
+| Tile renders but won't drag/orbit | Sandbox origin/permissions do not meet app requirements | Use the different-origin sandbox proxy and grant the minimum reviewed capability (§3) |
 | Dark content sits on a white box | iframe element default bg | Set iframe `style.background` to the theme bg (§6b) |
-| App ignores host theme | Vars not injected into `srcdoc` + not in `hostContext` | Do both (§6a) |
+| App ignores host theme | Vars not injected into the sandbox document + not in `hostContext` | Do both (§6a) |
 | PDF won't show in the tile | Plugin content blocked in sandboxed frame | Unsandbox (desktop) or re-host + open top-level (§5) |
 | Wrong text appears in a tile | Positional result correlation | Correlate by tool identity (§8) |
 | 2nd tool fails on a path/id from the 1st | Model garbled the relayed handle | Host-side `modifiedArgs` repair (§9) |

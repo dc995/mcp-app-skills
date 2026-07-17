@@ -36,6 +36,7 @@ Assign a category:
 | `[PROTOCOL]` | postMessage handshake or timing issue | tool-input before initialized |
 | `[RENDERING]` | Library uses blocked pattern internally | Knockout.js inside CesiumJS |
 | `[TRANSPORT]` | HTTP vs SSE vs Streamable HTTP difference | Session handling varies |
+| `[SECURITY]` | Trust-boundary or authorization weakness | Same-origin untrusted iframe, SSRF |
 | `[SUPPORT]` | Host NOW supports previously-blocked feature | Positive — upgrade the matrix! |
 
 ### 3. RECORD
@@ -55,45 +56,39 @@ Update the relevant host's capability field. Set `last-validated` to today's dat
 }
 ```
 
-#### b. `LESSONS_LEARNED.md` (workspace)
-Add a new issue entry if the discovery is novel:
+#### b. `evidence/<host>-<date>.md`
+Add or update a public evidence note:
 
 ```markdown
-## Issue #N: <Title>
+# <Host> validation — <date>
 
-**Date discovered**: YYYY-MM-DD
-**App affected**: <AppName>
-**Host**: <HostId>
-**Category**: [TAG]
-**Severity**: Breaking | Degraded | Cosmetic
-
-### Problem
-<What happened>
-
-### Error Message
-<Exact error>
-
-### Solution / Workaround
-<What fixed it or why it can't be fixed>
+- Evidence type: upstream | empirical
+- Host/runtime/SDK versions: <versions>
+- Capability: <matrix field>
+- Minimal reproduction: <steps>
+- Observed result: <result/error>
+- Scope/limitations: <what this does not prove>
 ```
 
-#### c. Repository memory (`/memories/repo/`)
-Add a quick-reference entry for future sessions:
+Do not include private source code, secrets, personal data or absolute local
+paths. Distill the portable behavior and reproduction.
 
-```
-## HIT: <brief title>
-- Host: <id>, Category: [TAG]
-- <one-line summary>
-- Workaround: <brief>
-```
+#### c. Host documentation
+
+Update the relevant host file when the evidence changes user-facing guidance.
+Avoid duplicating capability tables manually; the matrix remains authoritative.
 
 ### 4. PROPAGATE
 
-The system auto-benefits:
-- `mcp-app-build` pre-build check reads `host-matrix.json` → warns before building
-- `mcp-app-test` cross-host tests read matrix → expected-failure annotations
-- `mcp-app-audit` reads matrix → compatibility reports
-- `SKILL.md` capability table should be regenerated from `host-matrix.json` if it drifts
+Run the executable gates:
+
+- `validate_host_matrix` verifies schema, evidence and feature completeness.
+- `check_multi_host_compatibility` computes the target-host intersection.
+- `npm run smoke` prevents matrix/tool drift.
+- `node scripts/validate-repo.mjs` checks links, packaging and stale protocol literals.
+
+Static Markdown checklists are guidance; they do not automatically consume the
+matrix unless invoked through the companion MCP server.
 
 ## Example HIT Record
 
@@ -104,9 +99,9 @@ CLASSIFY: [CDN] + [NETWORK]
   - Runtime tile fetch to the vendor's domain blocked by connect-src
 RECORD:
   a. host-matrix.json → vscode.features.cdn-script-tags = false (already set)
-  b. LESSONS_LEARNED.md → Issue #9 (new entry)
-  c. /memories/repo/ → quick note
+  b. evidence/vscode-YYYY-MM.md → dated reproduction
+  c. vscode.md → portable workaround
 PROPAGATE:
-  - Pre-build check will warn: "Your app loads external scripts — blocked in VS Code"
-  - Pattern compat table updated: CDN-loaded SDK with runtime vendor fetch → broken
+  - validate_host_matrix passes
+  - check_multi_host_compatibility reports the expected blocker
 ```

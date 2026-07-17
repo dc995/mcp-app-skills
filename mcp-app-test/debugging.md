@@ -70,10 +70,12 @@ Send debug messages from UI to the host application log:
 
 ```typescript
 await app.sendLog({ level: "info", data: "Bridge initialized" });
-await app.sendLog({ level: "error", data: { error: err.message, stack: err.stack } });
+await app.sendLog({ level: "error", data: { error: sanitizeError(err) } });
 ```
 
 In AppHub, these appear in the Activity Log panel. In VS Code, check Output → MCP.
+Never log tokens, authorization headers, cookies, full tool payloads or private
+filesystem paths.
 
 ## Tool 4: PostMessage Tracing
 
@@ -82,9 +84,14 @@ Add a message listener to trace all iframe↔host communication:
 ```typescript
 // In the host page (e.g., AppHub index.html)
 window.addEventListener("message", (event) => {
-  console.log("[POSTMESSAGE]", event.origin, JSON.parse(event.data));
+  if (event.source !== debugIframe.contentWindow) return;
+  if (!event.data || typeof event.data !== "object") return;
+  console.log("[POSTMESSAGE]", event.data);
 });
 ```
+
+Do not install an unfiltered global listener in production. The debug bridge
+must use the same source, schema and size validation as the real host bridge.
 
 ### Common Protocol Issues
 
@@ -128,7 +135,7 @@ the server afterward doesn't clear it.
 
 ### Step 1 — Is the server actually up and healthy?
 
-Verify independently of the host (TLS port = HTTP port + 1000):
+Verify independently of the host using the exact configured endpoint:
 
 ```powershell
 Invoke-WebRequest -Uri 'https://localhost:<TLS_PORT>/mcp' -Method POST `
@@ -149,7 +156,6 @@ then does the next tool call succeed.
 
 ### Step 3 — Server down or wrong endpoint
 
-- Start it (`.\start-all.ps1` for HTTP apps, or let the host spawn stdio apps).
-- **Scheme/port mismatch**: `mcp.json` points at `https://localhost:<HTTP+1000>`. A
-  server started without TLS only serves plain HTTP, so the `https://` URL fails
-  with `fetch failed`. Run with TLS (the default in `start-all.ps1`).
+- Start the target project's existing server task, or let the host spawn a stdio
+  server.
+- Confirm the configured URL matches the listening scheme, address, port and path.

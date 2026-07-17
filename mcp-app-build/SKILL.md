@@ -57,11 +57,15 @@ transport and whether you depend on host capabilities.
 | Host | Key Constraint | Link |
 |---|---|---|
 | VS Code | No eval, no CDN, no external fetch, no mic/camera | Read `mcp-app-hosts/vscode.md` |
-| AppHub | Full browser — everything works | Read `mcp-app-hosts/apphub.md` |
-| Standalone | Most permissive, HTTP only | Read `mcp-app-hosts/standalone.md` |
-| Multi-host | Must use Universal Safe Set (canvas, DOM, bundled JS, server proxy) | Read `mcp-app-hosts/SKILL.md` |
+| AppHub | First-party permissive host; security depends on its trust mode | Read `mcp-app-hosts/apphub.md` |
+| Standalone | Reference test host; inspect the current implementation | Read `mcp-app-hosts/standalone.md` |
+| Multi-host | Start with the Validated Portable Set (canvas, safe DOM, bundled JS, server proxy) | Read `mcp-app-hosts/SKILL.md` |
 
 **If targeting VS Code (or multi-host), use the data-driven pattern exclusively.**
+
+If the design includes a custom host, OAuth, arbitrary external URLs, sensitive
+tools, model-context updates or third-party UI resources, run
+`mcp-app-security` before scaffolding.
 
 ### Framework Selection
 
@@ -86,19 +90,9 @@ transport and whether you depend on host capabilities.
     └── mcp-app.ts             # UI logic (vanilla JS or framework)
 ```
 
-## Port Assignment
+## Endpoint assignment
 
-Check `.vscode/mcp.json` and `start-all.ps1` for used ports. Next available = max + 1.
-
-| App | HTTP Port | TLS Port |
-|---|---|---|
-| ThreeJS | 3002 | 4002 |
-| Map | 3003 | 4003 |
-| Budget | 3004 | 4004 |
-| SystemMonitor | 3005 | 4005 |
-| GetTime | 3006 | 4006 |
-| InView | 3007 | 4007 |
-| Transcript | 3008 | 4008 |
-| AppHub | 3009 | 4009 |
-| AzureMaps | 3010 | 4010 |
-| **Next app** | **3011** | **4011** |
+Use configuration rather than a fixed repository-wide port table. For local
+HTTP development, bind loopback and select an unused port. If the target host
+requires HTTPS, configure a trusted local development certificate or reverse
+proxy. Do not assume a universal `HTTP + 1000` TLS convention.

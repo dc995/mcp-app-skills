@@ -1,5 +1,7 @@
 {
-  "version": "2026-06-03",
+  "$schema": "./host-matrix.schema.json",
+  "schemaVersion": "1.0.0",
+  "revision": "2026-07-17",
   "hosts": {
     "vscode": {
       "name": "VS Code Insiders",
@@ -24,7 +26,7 @@
         "autoplay": false,
         "web-speech": false,
         "clipboard-write": "varies",
-        "allow-same-origin": false,
+        "allow-same-origin": true,
         "populates-host-capabilities-permissions": false
       },
       "server-initiated": {
@@ -51,18 +53,14 @@
         "new-function": false,
         "cdn-script-tags": false,
         "cdn-link-tags": false,
-        "dynamic-import": false
+        "dynamic-import": false,
+        "window-open": false
       },
       "bundling": {
         "requires-singlefile": true,
         "npm-bundled-ok": true,
         "cdn-external-ok": false,
         "notes": "vite-plugin-singlefile inlines all JS/CSS into one HTML. External <script src> and <link href> to CDNs are blocked by CSP."
-      },
-      "port-config": {
-        "mcp-json-location": ".vscode/mcp.json",
-        "tls-offset": 1000,
-        "notes": "HTTP on 3xxx, TLS on 4xxx. mcp.json points to TLS ports."
       },
       "known-broken-patterns": [
         "Map/geo SDKs that load their script from a vendor CDN and fetch tiles or assets from vendor domains at runtime (CDN script tag + connect-src both blocked)",
@@ -75,9 +73,17 @@
         "npm-bundled rendering libraries that draw to canvas/WebGL/SVG with no string-to-code (e.g. canvas chart libs, data-driven 3D)",
         "map libraries whose tiles load as <img> elements (img-src is permissive) and that npm-bundle cleanly",
         "web-component / view libraries that template without eval or new Function()",
-        "Media played from server-proxied same-origin bytes (data: URL or embedded resource) triggered by a user gesture"
+        "Media played through a host-approved same-origin resource or host-mediated player, triggered by a user gesture"
       ],
-      "last-validated": "2026-06-17"
+      "last-validated": "2026-06-17",
+      "evidence": [
+        {
+          "kind": "empirical",
+          "date": "2026-06-17",
+          "source": "evidence/vscode-2026-06.md",
+          "summary": "Validated CSP, sandbox, media, permissions and sampling behavior in VS Code Insiders."
+        }
+      ]
     },
     "apphub": {
       "name": "AppHub (custom MCP host)",
@@ -111,12 +117,16 @@
         "websockets": true,
         "fetch-localhost": true,
         "fetch-external": true,
+        "external-media-src": true,
+        "media-autoplay": "unvalidated",
+        "web-speech-synthesis": true,
         "nested-iframes": true,
         "eval": true,
         "new-function": true,
         "cdn-script-tags": true,
         "cdn-link-tags": true,
-        "dynamic-import": true
+        "dynamic-import": true,
+        "window-open": true
       },
       "bundling": {
         "requires-singlefile": false,
@@ -124,16 +134,19 @@
         "cdn-external-ok": true,
         "notes": "Full browser environment. Minimal sandbox. Both bundled and CDN approaches work."
       },
-      "port-config": {
-        "http-port": 3009,
-        "tls-port": 4009,
-        "notes": "AppHub proxies MCP tool calls to downstream servers on their HTTP ports (3xxx)."
-      },
       "known-broken-patterns": [],
       "known-working-patterns": [
-        "Anything that works in a standard browser"
+        "Reviewed first-party apps using capabilities explicitly granted by the host"
       ],
-      "last-validated": "2026-04-05"
+      "last-validated": "2026-04-05",
+      "evidence": [
+        {
+          "kind": "empirical",
+          "date": "2026-04-05",
+          "source": "evidence/custom-hosts-2026-06.md",
+          "summary": "Validated against the first-party AppHub custom host."
+        }
+      ]
     },
     "standalone": {
       "name": "basic-host (ext-apps reference)",
@@ -167,22 +180,36 @@
         "websockets": true,
         "fetch-localhost": true,
         "fetch-external": true,
+        "external-media-src": true,
+        "media-autoplay": "unvalidated",
+        "web-speech-synthesis": true,
         "nested-iframes": true,
         "eval": true,
         "new-function": true,
         "cdn-script-tags": true,
         "cdn-link-tags": true,
-        "dynamic-import": true
+        "dynamic-import": true,
+        "window-open": true
       },
       "bundling": {
         "requires-singlefile": false,
         "npm-bundled-ok": true,
         "cdn-external-ok": true,
-        "notes": "Most permissive. HTTP only (localhost:8080). No TLS."
+        "notes": "Reference browser host. Exact CSP, sandbox and transport behavior is version-specific."
       },
       "known-broken-patterns": [],
-      "known-working-patterns": ["Anything that works in a standard browser"],
-      "last-validated": "2026-04-05"
+      "known-working-patterns": [
+        "Capabilities demonstrated by the current basic-host release"
+      ],
+      "last-validated": "2026-04-05",
+      "evidence": [
+        {
+          "kind": "upstream",
+          "date": "2026-04-05",
+          "source": "https://github.com/modelcontextprotocol/ext-apps/tree/main/examples/basic-host",
+          "summary": "Reference-host behavior; server-initiated capabilities remain unvalidated."
+        }
+      ]
     },
     "copilothub": {
       "name": "CopilotHub (GitHub Copilot SDK host)",
@@ -201,7 +228,7 @@
         "clipboard-write": true,
         "allow-same-origin": true,
         "allow-popups": true,
-        "notes": "iframe sandbox = 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox'. Browser/OS consent still applies to device APIs."
+        "notes": "The first-party validation harness used srcdoc with broad sandbox grants. This is not approved for arbitrary third-party resources; production hosts require a different-origin sandbox proxy."
       },
       "server-initiated": {
         "sampling": true,
@@ -219,6 +246,9 @@
         "websockets": true,
         "fetch-localhost": true,
         "fetch-external": true,
+        "external-media-src": true,
+        "media-autoplay": "unvalidated",
+        "web-speech-synthesis": true,
         "nested-iframes": true,
         "eval": true,
         "new-function": true,
@@ -233,11 +263,6 @@
         "cdn-external-ok": true,
         "notes": "Full browser environment served over TLS (port 4021). Both bundled and CDN approaches work."
       },
-      "port-config": {
-        "https-port": 4021,
-        "tls-offset": 1000,
-        "notes": "HTTPS only on 4021. Connects to downstream servers on their TLS ports (https://localhost:<HTTP+1000>/mcp), Streamable HTTP with SSE fallback."
-      },
       "authoring": {
         "sdk": "@github/copilot-sdk",
         "doc": "copilot-sdk-host.md",
@@ -245,11 +270,19 @@
       },
       "known-broken-patterns": [],
       "known-working-patterns": [
-        "Anything that works in a standard browser",
+        "Reviewed apps using capabilities explicitly granted by the host",
         "Server->host sampling (sampling/createMessage) via the Copilot SDK bridge"
       ],
-      "last-validated": "2026-06-18"
+      "last-validated": "2026-06-18",
+      "evidence": [
+        {
+          "kind": "empirical",
+          "date": "2026-06-18",
+          "source": "evidence/copilot-sdk-host-2026-06.md",
+          "summary": "Differential validation of GitHub Copilot SDK server configuration, hook capture and sampling bridge behavior."
+        }
+      ]
     }
   },
-  "notes": "Only hosts that have been directly validated are listed. Other hosts (e.g. cloud chat assistants that render MCP App UIs) are generally more permissive than VS Code — but add a host entry here only after validating its capabilities firsthand via the HIT process in hit-process.md."
+  "notes": "Only directly validated hosts are listed. Do not infer an unlisted host from another host's CSP profile; validate lifecycle, permissions, accessibility, transport and security behavior through the HIT evidence process."
 }

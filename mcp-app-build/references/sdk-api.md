@@ -20,7 +20,7 @@ registerAppTool(server, toolName, {
 ### registerAppResource
 ```typescript
 registerAppResource(server, uri, uri, {
-  mimeType: RESOURCE_MIME_TYPE,     // "text/html; ext-apps"
+  mimeType: RESOURCE_MIME_TYPE,     // "text/html;profile=mcp-app"
 }, readCallback: () => Promise<ReadResourceResult>);
 ```
 
@@ -29,13 +29,26 @@ The `_meta.ui.csp` goes in the `contents[]` objects returned by the read callbac
 return {
   contents: [{
     uri, mimeType: RESOURCE_MIME_TYPE, text: html,
-    _meta: { ui: { csp: { connectDomains: ["https://..."] } } }
+    _meta: {
+      ui: {
+        csp: {
+          connectDomains: ["https://api.example.com"],
+          resourceDomains: ["https://static.example.com"],
+          frameDomains: [],
+          baseUriDomains: []
+        },
+        permissions: {
+          clipboardWrite: {}
+        }
+      }
+    }
   }]
 };
 ```
 
 ### RESOURCE_MIME_TYPE
-`"text/html; ext-apps"` — identifies MCP App HTML resources.
+`"text/html;profile=mcp-app"` — identifies MCP App HTML resources. Import and
+use `RESOURCE_MIME_TYPE` rather than duplicating the literal.
 
 ## Client Side (`@modelcontextprotocol/ext-apps`)
 
