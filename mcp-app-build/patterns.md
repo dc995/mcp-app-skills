@@ -16,6 +16,77 @@ app.onteardown = async () => { cleanup(); return {}; };
 await app.connect();
 ```
 
+## Initial Hydration — A Resource Is Not App State
+
+The `ui://` resource supplies the bundled UI shell. The tool result supplies the
+state that makes the shell usable. A normal Display Frame starts in this order:
+
+1. Host calls a tool whose `_meta.ui.resourceUri` points to the app resource.
+2. Host loads the resource and completes the `ui/initialize` handshake.
+3. Host sends tool input/result notifications after initialization.
+4. The app renders validated `structuredContent` from `ontoolresult`.
+
+Do not assume that loading the resource alone creates a server-side session or
+selects a usable backend. The initial/show tool must return complete bootstrap
+state: session identifier when applicable, configured option/provider, and data
+needed to render enabled controls.
+
+Some hosts or custom splash screens can mount a resource without an initial tool
+result. If the app must support that path, add an idempotent app-callable bootstrap
+tool and self-hydrate only while state is still absent:
+
+```typescript
+await app.connect();
+
+window.setTimeout(() => {
+  if (!state) void initialize();
+}, 250);
+
+async function initialize() {
+  const result = await app.callServerTool({
+    name: "show_app",
+    arguments: {},
+  });
+  render(validateStructuredContent(result.structuredContent));
+}
+```
+
+Keep the guard: the host's original result may arrive just after `connect()`, and
+an unconditional bootstrap call creates duplicate sessions. When choosing a
+default backend, resolve the first configured option server-side; do not hard-code
+an unavailable provider into the show path.
+
+## Working Surface and Display Modes
+
+`autoResize` reports the document's content size, but a host may cap inline app
+height. A size notification is advisory, not a guarantee of a taller iframe.
+For editors, studios, and other large work surfaces:
+
+1. Advertise supported modes in app capabilities.
+2. After `connect()`, inspect `getHostContext().availableDisplayModes`.
+3. Request `fullscreen` only when the host offers it and the workflow needs it.
+4. Keep an explicit Full screen / Exit full screen control.
+5. Fall back to `sendSizeChanged({ height })` for inline-only hosts.
+
+```typescript
+const app = new App(
+  { name: "Studio", version: "1.0.0" },
+  { availableDisplayModes: ["inline", "fullscreen"] },
+  { autoResize: true },
+);
+
+await app.connect();
+const context = app.getHostContext();
+if (context?.availableDisplayModes?.includes("fullscreen")) {
+  await app.requestDisplayMode({ mode: "fullscreen" });
+} else {
+  await app.sendSizeChanged({ height: 760 });
+}
+```
+
+Capability-gate every display-mode request. Unknown or inline-only hosts must
+remain usable with scrolling and responsive layout.
+
 ## Data-Driven Rendering (PRESCRIPTIVE for VS Code)
 
 **ALWAYS use structured data input, NOT code strings**, when targeting VS Code or multi-host.

@@ -80,6 +80,25 @@ media-src 'self'        (external audio/video URLs blocked)
 | WebSockets | Supported (via server proxy) |
 | `<img src>` to external URLs | Generally works (img-src is more permissive) — this is why Leaflet tiles load |
 
+## Inline Height and Fullscreen Work Surfaces
+
+VS Code can cap the height of inline MCP App tiles even when the app's default
+`autoResize` sends correct `ui/notifications/size-changed` measurements. The
+result is an inner scrollbar around an otherwise healthy app. Treat auto-resize
+as advisory host input, not control over the chat layout.
+
+For a large editor, canvas, or studio:
+
+- advertise `availableDisplayModes: ["inline", "fullscreen"]` from the app;
+- inspect host context after `await app.connect()`;
+- call `requestDisplayMode({ mode: "fullscreen" })` only when VS Code lists it;
+- provide a visible control to return to inline mode;
+- retain responsive inline layout and `sendSizeChanged` fallback.
+
+Increasing only CSS `min-height` makes the document taller but does not guarantee
+that VS Code enlarges the containing tile. Validate both inline scrolling and the
+fullscreen path in the actual host.
+
 ## Endpoint configuration
 
 VS Code supports configured HTTP and HTTPS MCP endpoints. TLS and port layout are

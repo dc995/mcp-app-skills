@@ -137,6 +137,37 @@ test("UI receives tool result via postMessage", async ({ appHub }) => {
 });
 ```
 
+### Test initial hydration and resource-only fallback
+
+Cover both supported launch paths when an app implements them:
+
+```typescript
+test("show tool hydrates a usable configured state", async ({ appHub }) => {
+  const tile = appHub.tile("image-studio");
+  await tile.launchDemo();
+  await expect(tile.iframe.locator("[data-session-id]")).not.toHaveText("pending");
+  await expect(tile.iframe.locator("select[name=provider]")).not.toHaveValue("");
+});
+
+test("resource-only mount self-hydrates once", async ({ appHub }) => {
+  const tile = appHub.tile("image-studio");
+  await tile.launchResourceOnly();
+  await expect(tile.iframe.locator("[data-session-id]")).not.toHaveText("pending");
+  await expect(tile.serverCalls("show_app")).resolves.toHaveLength(1);
+});
+```
+
+The second test applies only when resource-only/splash rendering is an explicit
+requirement. It should prove the fallback is idempotent and does not race the
+host-delivered initial result into two sessions.
+
+### Test display-mode negotiation
+
+For apps that need a large working surface, assert that they advertise fullscreen,
+request it only when the mocked host offers it, and remain usable when the host
+returns inline mode. A CSS height assertion alone is insufficient because the host
+owns the iframe container.
+
 ## Playwright Config Structure
 
 ```typescript
