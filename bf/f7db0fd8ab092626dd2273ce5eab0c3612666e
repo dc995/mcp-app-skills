@@ -1,0 +1,23 @@
+mcp-app-hosts/vscode.md
+  s_0ad929cfadf750::t_fc746615014048 83-101
+mcp-app-build/patterns.md
+  s_0ad929cfadf750::t_fc746615014048 19-89
+mcp-app-test/e2e.md
+  s_0ad929cfadf750::t_fc746615014048 140-170
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "bff7db0fd8ab092626dd2273ce5eab0c3612666e",
+  "prompts": {},
+  "sessions": {
+    "s_0ad929cfadf750": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "e09f6efa-3f99-4437-851b-ebc54b869089",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "dc995 <dc995@hotmail.com>"
+    }
+  }
+}
