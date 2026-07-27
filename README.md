@@ -192,6 +192,18 @@ matrix, validation, scanning and guidance into callable tools.
 | `mcp-server/` | Runnable stdio MCP server exposing host/multi-host checks, matrix validation, bounded app scanning, guidance and scaffold guidance |
 | `README.md` | Why it exists, the stack it composes, how to run the server |
 
+### Additional Loop Design skills
+
+Two general-purpose skills from the Loop Design Pack are also available:
+
+| Skill | Purpose |
+|-------|---------|
+| `redesign-existing-projects` | Audit and improve an existing website or app without changing its framework or behavior |
+| `loopdeck` | Observe and control an always-on Loop runtime through a configured `loopdeck` MCP server |
+
+The redesign skill includes its upstream MIT license. The `loopdeck` package is
+portable instruction content; it requires a separate Loop runtime and MCP server.
+
 ## Installation
 
 ### VS Code / GitHub Copilot
@@ -208,6 +220,8 @@ Copy-Item -Recurse mcp-app-hosts  "$env:USERPROFILE\.copilot\skills\mcp-app-host
 Copy-Item -Recurse mcp-app-test   "$env:USERPROFILE\.copilot\skills\mcp-app-test"
 Copy-Item -Recurse mcp-app-security "$env:USERPROFILE\.copilot\skills\mcp-app-security"
 Copy-Item -Recurse mcp-app-ext    "$env:USERPROFILE\.copilot\skills\mcp-app-ext"
+Copy-Item -Recurse redesign-existing-projects "$env:USERPROFILE\.copilot\skills\redesign-existing-projects"
+Copy-Item -Recurse loopdeck "$env:USERPROFILE\.copilot\skills\loopdeck"
 Copy-Item .github\agents\mcp-app-ext.agent.md "$env:USERPROFILE\.copilot\agents\mcp-app-ext.agent.md"
 ```
 
@@ -220,13 +234,15 @@ cp -r mcp-app-hosts  ~/.copilot/skills/mcp-app-hosts
 cp -r mcp-app-test   ~/.copilot/skills/mcp-app-test
 cp -r mcp-app-security ~/.copilot/skills/mcp-app-security
 cp -r mcp-app-ext    ~/.copilot/skills/mcp-app-ext
+cp -r redesign-existing-projects ~/.copilot/skills/redesign-existing-projects
+cp -r loopdeck ~/.copilot/skills/loopdeck
 cp .github/agents/mcp-app-ext.agent.md ~/.copilot/agents/mcp-app-ext.agent.md
 ```
 
 ### Claude Code
 
 ```bash
-cp -r mcp-app-build mcp-app-audit mcp-app-hosts mcp-app-test mcp-app-security mcp-app-ext ~/.claude/skills/
+cp -r mcp-app-build mcp-app-audit mcp-app-hosts mcp-app-test mcp-app-security mcp-app-ext redesign-existing-projects loopdeck ~/.claude/skills/
 ```
 
 ### Conductor agent + MCP server
@@ -250,13 +266,13 @@ roots the scanner may inspect. See
 ### Gemini CLI
 
 ```bash
-cp -r mcp-app-build mcp-app-audit mcp-app-hosts mcp-app-test mcp-app-security mcp-app-ext ~/.gemini/skills/
+cp -r mcp-app-build mcp-app-audit mcp-app-hosts mcp-app-test mcp-app-security mcp-app-ext redesign-existing-projects loopdeck ~/.gemini/skills/
 ```
 
 ### Cline
 
 ```bash
-cp -r mcp-app-build mcp-app-audit mcp-app-hosts mcp-app-test mcp-app-security mcp-app-ext ~/.cline/skills/
+cp -r mcp-app-build mcp-app-audit mcp-app-hosts mcp-app-test mcp-app-security mcp-app-ext redesign-existing-projects loopdeck ~/.cline/skills/
 ```
 
 ### Per-project
@@ -275,6 +291,8 @@ After installing, ask your agent:
 - "Threat-model my MCP App host" → should invoke `mcp-app-security`
 - "Build an MCP App and a host to render it, end to end" → should invoke `mcp-app-ext` (Conductor)
 - "Why won't my tile render / drag / theme in my web host?" → `mcp-app-hosts/host-rendering.md`
+- "Redesign this existing app without changing its framework" → should invoke `redesign-existing-projects`
+- "Give me a briefing on my always-on loop" → should invoke `loopdeck`
 
 Repository quality gates:
 

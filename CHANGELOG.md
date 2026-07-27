@@ -9,6 +9,8 @@
 - Multi-host compatibility and bounded static app scanning tools
 - Installable Conductor `.agent.md` definition
 - CI, dependency updates, contribution guidance and security policy
+- Portable `loopdeck` runtime-control skill from the Loop Design Pack
+- `redesign-existing-projects` skill with its upstream MIT license
 
 ### Changed
 
