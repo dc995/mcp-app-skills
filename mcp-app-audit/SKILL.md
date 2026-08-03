@@ -52,6 +52,10 @@ Check these files in the app:
 - [ ] `postMessage` handlers that do not verify `event.source` and validate JSON-RPC
 - [ ] Tool/model content assigned to `innerHTML` without sanitization
 - [ ] Untrusted tool/UI text passed to model context as instructions
+- [ ] MCP App UI calls a sampling tool, but VS Code workspace settings lack an
+  exact `chat.mcp.serverSampling` entry with `allowedOutsideChat: true`
+- [ ] Cancellation-shaped sampling result is treated as success or overwrites
+  user/session state
 
 ### Step 2: Classify Each Finding
 
@@ -65,6 +69,8 @@ Check these files in the app:
 | No text fallback in tool result | [PROTOCOL] | Degraded in non-UI hosts |
 | CSP relaxation in `_meta` | [CSP] | Cosmetic (VS Code ignores it) |
 | Sampling/elicitation on stateless transport | [TRANSPORT] | Breaking — server→client request times out (-32001) |
+| VS Code sampling capability without per-server authorization | [PERMISSION] | Degraded — host resolves sampling as cancelled |
+| Sampling cancellation applied as model output | [PROTOCOL] | Breaking — corrupts user/session state |
 | Same-origin active iframe content | [SECURITY] | Critical — host-origin compromise |
 | Arbitrary server-side URL fetch | [SECURITY] | Critical — SSRF/data exfiltration |
 | Missing Origin/session controls | [SECURITY] | Critical for network-reachable servers |

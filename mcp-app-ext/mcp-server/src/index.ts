@@ -21,6 +21,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import {
   FEATURE_PATHS,
+  getCapabilityRequirements,
   getCapabilityStatus,
   loadMatrix,
   validateMatrix,
@@ -81,8 +82,9 @@ const server = new McpServer({ name: "mcp-app-ext", version: "0.2.0" });
 type CompatibilityFinding = {
   host: string;
   feature: string;
-  status: "blocked" | "unvalidated";
+  status: "blocked" | "unvalidated" | "conditional";
   alternative: string;
+  requirements?: string[];
 };
 
 function evaluateCompatibility(
@@ -90,7 +92,7 @@ function evaluateCompatibility(
   hosts: string[],
   features: string[],
 ): {
-  verdict: "PASS" | "BLOCKED" | "UNKNOWN";
+  verdict: "PASS" | "BLOCKED" | "UNKNOWN" | "CONDITIONAL";
   findings: CompatibilityFinding[];
 } {
   const unknownFeatures = features.filter((feature) => !FEATURE_PATHS[feature]);
@@ -122,6 +124,17 @@ function evaluateCompatibility(
           status: "unvalidated",
           alternative: "Treat as unavailable until a dated host probe records evidence.",
         });
+      } else {
+        const requirements = getCapabilityRequirements(host, feature);
+        if (requirements.length > 0) {
+          findings.push({
+            host: hostId,
+            feature,
+            status: "conditional",
+            requirements,
+            alternative: SAFE_ALTERNATIVE[feature] ?? DEFAULT_ALTERNATIVE,
+          });
+        }
       }
     }
   }
@@ -129,7 +142,9 @@ function evaluateCompatibility(
   const verdict = findings.some((finding) => finding.status === "blocked")
     ? "BLOCKED"
     : findings.length > 0
-      ? "UNKNOWN"
+      ? findings.some((finding) => finding.status === "unvalidated")
+        ? "UNKNOWN"
+        : "CONDITIONAL"
       : "PASS";
   return { verdict, findings };
 }
@@ -168,7 +183,8 @@ server.registerTool(
     description:
       "Given a target host and the features an app plans to use, return a pass/fail verdict with " +
       "the specific blockers and a safer alternative for each. This is the objective pre-build gate — " +
-      "call it BEFORE writing app code. Unvalidated capabilities return UNKNOWN. Feature names: " +
+      "call it BEFORE writing app code. Unvalidated capabilities return UNKNOWN; supported " +
+      "capabilities with unsatisfied runtime/policy requirements return CONDITIONAL. Feature names: " +
       Object.keys(FEATURE_PATHS).join(", ") + ".",
     inputSchema: {
       host: z.string().describe("Target host id, e.g. 'vscode'."),
@@ -188,7 +204,9 @@ server.registerTool(
             advice:
               result.verdict === "PASS"
                 ? "All requested capabilities are supported by dated evidence for this host."
-                : "Resolve blocked capabilities and validate unknown capabilities on every target host.",
+                : result.verdict === "CONDITIONAL"
+                  ? "Satisfy every listed transport, authorization and fallback requirement before relying on this capability."
+                  : "Resolve blocked capabilities and validate unknown capabilities on every target host.",
           },
           null,
           2,
@@ -214,6 +232,9 @@ const SAFE_ALTERNATIVE: Record<string, string> = {
   camera: "Provide file upload or manual input fallback.",
   geolocation: "Use explicit user-entered location or a server-side approved lookup.",
   "clipboard-write": "Provide a selectable text fallback and require a user gesture.",
+  "clipboard-image-write": "Feature-detect ClipboardItem, require a direct user gesture and retain a text/path fallback.",
+  "message-image-capability": "Disable chat-image delivery unless the host advertises message.image.",
+  "ui-message-image": "Treat image delivery as unavailable until a dated end-to-end host probe succeeds.",
   sampling: "Ship a deterministic Display-Frame fallback.",
   elicitation: "Use a normal app form or plain tool input fallback.",
   "resource-subscriptions": "Use polling or explicit refresh where subscriptions are unavailable.",
@@ -228,7 +249,8 @@ server.registerTool(
     title: "Check compatibility across target hosts",
     description:
       "Intersect planned features across multiple target hosts. Returns BLOCKED for known " +
-      "unsupported capabilities and UNKNOWN for unvalidated/variable capabilities.",
+      "unsupported capabilities, UNKNOWN for unvalidated/variable capabilities, and CONDITIONAL " +
+      "for supported capabilities with transport, authorization or fallback requirements.",
     inputSchema: {
       hosts: z.array(z.string()).min(1),
       features: z.array(z.string()),

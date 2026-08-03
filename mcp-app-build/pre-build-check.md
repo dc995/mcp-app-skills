@@ -84,6 +84,25 @@ For each planned feature, check against the host matrix:
 **If your app needs secure-context APIs:**
 → Proxy through server, or accept host-specific limitations.
 
+### Server-Initiated Requests
+
+| Requirement | Sampling / elicitation / subscriptions |
+|---|---|
+| Stateful Streamable HTTP transport | Required (`sessionIdGenerator` + session map) |
+| Negotiated host capability | Required |
+| VS Code per-server sampling authorization | Required for sampling |
+| Type A fallback | Required |
+
+If an MCP App button calls a tool that then calls
+`sampling/createMessage`, VS Code classifies that model request as
+**outside chat**. Add the exact server entry under
+`chat.mcp.serverSampling` with `allowedOutsideChat: true`. Validate other
+invocation contexts separately; the recorded probe covers MCP App UI actions.
+
+Capability presence alone is not proof of authorization. A missing grant can
+produce a valid response with `stopReason: "cancelled"` rather than a protocol
+error. Preserve user state and provide a fallback. See [sampling.md](sampling.md).
+
 ## Step 3: Evaluate Result
 
 ```
@@ -108,6 +127,10 @@ Needs external fetch from UI?
 
 Needs browser permission (mic/camera/geo)?
   └─ YES → Build fallback UI + runtime HostCapabilities check
+
+Server calls sampling/createMessage?
+  └─ YES → Stateful transport + negotiated capability + host authorization
+       └─ VS Code App button → allowedOutsideChat: true for exact server entry
 
 Everything bundleable + data-driven + server-proxied?
   └─ YES → Compatible with the currently validated host set; still test targets

@@ -25,3 +25,13 @@ Security reports may cover:
 
 The empirical example hosts described in `evidence/` are validation harnesses,
 not production security guarantees.
+
+## Dependency audit exception
+
+The companion server is stdio-only and does not expose Hono's `serve-static`.
+Until `@modelcontextprotocol/sdk` permits `@hono/node-server >=2.0.5`, the
+production audit allows only
+[GHSA-frvp-7c67-39w9](https://github.com/advisories/GHSA-frvp-7c67-39w9)
+in that unreachable path. `scripts/audit-production.mjs` fails on every other
+production advisory. Reassess this exception when the SDK dependency changes or
+before adding an HTTP/static-file surface.

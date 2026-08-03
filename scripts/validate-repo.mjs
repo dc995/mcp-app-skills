@@ -77,10 +77,77 @@ for (const agentFile of files.filter((file) => file.endsWith(".agent.md"))) {
   }
 }
 
-JSON.parse(await readFile(path.join(ROOT, "mcp-app-hosts", "host-matrix.json"), "utf-8"));
+const hostMatrix = JSON.parse(
+  await readFile(path.join(ROOT, "mcp-app-hosts", "host-matrix.json"), "utf-8"),
+);
 JSON.parse(
   await readFile(path.join(ROOT, "mcp-app-hosts", "host-matrix.schema.json"), "utf-8"),
 );
+
+const samplingGuidePath = path.join(ROOT, "mcp-app-build", "sampling.md");
+const samplingGuide = await readFile(samplingGuidePath, "utf-8");
+for (const requiredGuidance of [
+  "chat.mcp.serverSampling",
+  "allowedOutsideChat",
+  "stateful transport",
+  "Host authorization",
+]) {
+  if (!samplingGuide.includes(requiredGuidance)) {
+    fail(
+      samplingGuidePath,
+      `sampling guidance must retain the VS Code authorization requirement: ${requiredGuidance}`,
+    );
+  }
+}
+if (!samplingGuide.includes("## The three requirements")) {
+  fail(samplingGuidePath, "sampling guide must retain its three-requirement structure");
+}
+
+const vscode = hostMatrix.hosts?.vscode;
+const samplingRequirements = vscode?.["server-initiated"]?.["sampling-requirements"];
+for (const requirement of [
+  "stateful-or-bidirectional-transport",
+  "per-server-authorization:allowedOutsideChat-for-app-ui",
+  "display-frame-fallback",
+]) {
+  if (!samplingRequirements?.includes(requirement)) {
+    fail(
+      path.join(ROOT, "mcp-app-hosts", "host-matrix.json"),
+      `VS Code sampling requirements must include: ${requirement}`,
+    );
+  }
+}
+if (
+  !vscode?.evidence?.some(
+    (entry) =>
+      entry.date === "2026-07-31" &&
+      entry.source === "evidence/vscode-2026-07.md" &&
+      /sampling authorization/i.test(entry.summary),
+  )
+) {
+  fail(
+    path.join(ROOT, "mcp-app-hosts", "host-matrix.json"),
+    "VS Code sampling authorization must have a dated, scoped evidence entry",
+  );
+}
+
+const vscodeGuidePath = path.join(ROOT, "mcp-app-hosts", "vscode.md");
+const vscodeGuide = await readFile(vscodeGuidePath, "utf-8");
+if (
+  !vscodeGuide.includes("chat.mcp.serverSampling") ||
+  !vscodeGuide.includes('stopReason: "cancelled"')
+) {
+  fail(
+    vscodeGuidePath,
+    "VS Code guidance must distinguish sampling authorization refusal from capability/transport failure",
+  );
+}
+
+const conductorPath = path.join(ROOT, "mcp-app-ext", "SKILL.md");
+const conductor = await readFile(conductorPath, "utf-8");
+if (/runs there runs\s+everywhere/i.test(conductor)) {
+  fail(conductorPath, "must not infer universal host compatibility from a VS Code pass");
+}
 
 if (failures.length > 0) {
   console.error(`Repository validation failed (${failures.length}):`);

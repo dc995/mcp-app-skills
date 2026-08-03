@@ -1,6 +1,8 @@
 # VS Code Host — MCP App Constraints
 
-VS Code Insiders renders MCP App UIs in a heavily sandboxed iframe with the most restrictive CSP of any MCP host.
+VS Code Insiders renders MCP App UIs in a heavily sandboxed iframe with the most
+restrictive CSP in the currently validated host set. Unknown hosts still require
+their own validation.
 
 ## CSP Policy
 
@@ -19,10 +21,10 @@ media-src 'self'        (external audio/video URLs blocked)
 
 > This policy is **host-controlled and immutable** — no setting, flag, or trust prompt lets the
 > app widen it. The ext-apps spec defines opt-in knobs (`_meta.ui.csp.connectDomains` /
-> `resourceDomains`, `HostCapabilities.sandbox.permissions`), but **VS Code does not honor them today**:
-> the declared domains are ignored and `sandbox.permissions` is not populated, so there is no runtime
-> capability to detect and no permission path to request. Design as if the UI is fully isolated and the
-> **server is the only egress**.
+> `resourceDomains`, `HostCapabilities.sandbox.permissions`), but VS Code does not populate
+> `sandbox.permissions` today and ignores declared network-domain relaxations. Design as if the UI is
+> fully isolated and the **server is the only egress**. A direct-gesture clipboard write can still succeed
+> through the browser API; see the scoped exception below.
 
 ## What This Blocks
 
@@ -48,7 +50,7 @@ media-src 'self'        (external audio/video URLs blocked)
 - Camera (`getUserMedia({video})`) → denied
 - Geolocation (`navigator.geolocation`) → denied
 - Web Speech API (`SpeechRecognition`) → denied
-- Even declaring `_meta.ui.permissions` has no effect today
+- Declaring the corresponding `_meta.ui.permissions` did not enable these tested APIs
 
 ### 5. Popups / New Windows (breaks naive OAuth)
 - `window.open(...)` → returns `null` in the sandboxed iframe; no popup appears
@@ -79,6 +81,61 @@ media-src 'self'        (external audio/video URLs blocked)
 | Web Workers (inline/blob) | Supported |
 | WebSockets | Supported (via server proxy) |
 | `<img src>` to external URLs | Generally works (img-src is more permissive) — this is why Leaflet tiles load |
+| PNG clipboard write | `ClipboardItem` works inside a direct user gesture in the validated build; retain a fallback |
+
+## Host Sampling Authorization
+
+VS Code supports `sampling/createMessage`, but capability negotiation does not
+grant a server permission to use the host model. Sampling is authorized per MCP
+server and invocation context through workspace/user settings:
+
+```json
+{
+  "chat.mcp.serverSampling": {
+    "<workspace-or-config-label>: <server-name>": {
+      "allowedOutsideChat": true
+    }
+  }
+}
+```
+
+An MCP App button that uses `app.callServerTool()` and whose server tool then
+calls `sampling/createMessage` is **outside chat**. It needs
+`allowedOutsideChat: true`. Direct-chat authorization was not part of the
+recorded probe and must be validated separately.
+
+Use the exact server key recorded by VS Code for the configured entry. After
+changing the setting, reload the window or reconnect the MCP server; an existing
+connection may retain the old authorization decision.
+
+When the grant is absent, the host can still advertise the sampling capability
+but return a schema-valid cancellation (`stopReason: "cancelled"`). This is a
+policy refusal, not a model/provider failure. Handle it as a normal decline and
+preserve the user's input.
+
+## Clipboard Images vs Chat Images
+
+Treat copying an image and asking the host to add an image message as two
+independent capabilities.
+
+In VS Code Insiders 1.131.0-insider, a click handler successfully wrote a PNG
+`Blob` with `navigator.clipboard.write([new ClipboardItem(...)])`, even though
+`getHostCapabilities().sandbox.permissions` was absent. For this path:
+
+- declare `_meta.ui.permissions.clipboardWrite` on the app resource;
+- feature-detect `navigator.clipboard.write` and `ClipboardItem`;
+- invoke the write directly from the click handler while user activation is active;
+- catch denial and fall back to copying an artifact path or other text reference.
+
+Do not disable clipboard copy only because
+`hostCapabilities.sandbox.permissions.clipboardWrite` is absent; that produced a
+false negative in the validated build.
+
+By contrast, only call `app.sendMessage()` with image content when
+`getHostCapabilities()?.message?.image` is advertised. That capability was absent
+in the same build, so direct MCP App-to-chat image delivery remains unvalidated.
+An image manually pasted into chat after a clipboard copy does not prove that
+`ui/message` image delivery worked.
 
 ## Inline Height and Fullscreen Work Surfaces
 
@@ -293,5 +350,6 @@ if (!caps?.sandbox?.permissions?.microphone) {
 - VS Code — MCP Apps support (blog): https://code.visualstudio.com/blogs/2026/01/26/mcp-apps-support
 - ext-apps — Testing MCP Apps: https://github.com/modelcontextprotocol/ext-apps/blob/main/docs/testing-mcp-apps.md
 
-> Media CSP/sandbox constraints above are empirical observations from June 2026,
-> recorded in `evidence/vscode-2026-06.md`. Revalidate on host/runtime updates.
+> Media CSP/sandbox constraints are recorded in `evidence/vscode-2026-06.md`.
+> PNG clipboard and image-message observations are recorded in
+> `evidence/vscode-2026-07.md`. Revalidate on host/runtime updates.

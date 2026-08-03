@@ -168,6 +168,24 @@ request it only when the mocked host offers it, and remain usable when the host
 returns inline mode. A CSS height assertion alone is insufficient because the host
 owns the iframe container.
 
+### Test image clipboard and chat delivery separately
+
+For image-producing apps, cover clipboard and host messaging as independent
+branches:
+
+- with `navigator.clipboard.write` and `ClipboardItem` available, a direct click
+  writes an `image/png` item and reports bitmap-copy success;
+- when the bitmap write rejects or the APIs are absent, the app copies or exposes
+  the artifact path instead of losing the generated image;
+- an absent `hostCapabilities.message.image` disables the chat-image action and
+  sends no `ui/message` request;
+- an advertised `hostCapabilities.message.image` sends one image content item and
+  handles both accepted and declined host responses.
+
+In a real-host HIT, paste into an independent target to prove clipboard contents.
+Then validate `app.sendMessage()` separately with request/response evidence. A
+manual paste into chat proves only the clipboard path.
+
 ## Playwright Config Structure
 
 ```typescript

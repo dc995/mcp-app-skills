@@ -280,6 +280,64 @@ await app.updateModelContext({
 });
 ```
 
+## Copy Image and Send Image to Chat
+
+Clipboard copy is a browser operation; adding an image to the conversation is a
+host operation. Implement and test them separately.
+
+For clipboard copy, declare `_meta.ui.permissions.clipboardWrite` on the app
+resource, then feature-detect and attempt the write inside the user's click. Do
+not require `hostCapabilities.sandbox.permissions.clipboardWrite`: some hosts omit
+that metadata even when the direct-gesture browser operation succeeds.
+
+```typescript
+async function copyPng(blob: Blob, artifactPath: string) {
+  if (navigator.clipboard?.write && typeof ClipboardItem !== "undefined") {
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({ "image/png": blob }),
+      ]);
+      return { copied: "image" as const };
+    } catch {
+      // Continue to the portable text fallback.
+    }
+  }
+
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(artifactPath);
+      return { copied: "path" as const, artifactPath };
+    } catch {
+      // Return the path so the UI can expose it even when text copy is denied.
+    }
+  }
+
+  return { copied: "nothing" as const, artifactPath };
+}
+```
+
+For chat delivery, capability-gate `app.sendMessage()` and disable the action when
+the host does not advertise image messages:
+
+```typescript
+const canSendImage = Boolean(app.getHostCapabilities()?.message?.image);
+
+if (canSendImage) {
+  try {
+    const result = await app.sendMessage({
+      role: "user",
+      content: [{ type: "image", data: base64Png, mimeType: "image/png" }],
+    });
+    showChatDeliveryStatus(result.isError ? "declined" : "accepted");
+  } catch {
+    showChatDeliveryStatus("failed");
+  }
+}
+```
+
+Do not interpret a later clipboard paste into chat as proof that `sendMessage()`
+worked. Record which path produced the visible attachment.
+
 ## Pause Animations When Offscreen
 
 ```typescript

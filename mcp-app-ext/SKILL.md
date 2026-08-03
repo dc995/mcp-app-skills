@@ -90,9 +90,11 @@ You may be consumed by *any* agent, so do not trust prose alone:
    `mcp-app-build/pre-build-check.md` flow (or `check_compatibility`) against the
    **target host**. Ship against the **Validated Portable Set** unless a host is
    confirmed permissive.
-4. **VS Code is the strictest validated host** — an app that runs there runs
-   everywhere. No `eval`/`new Function()`, no external CDN `<script>`, no external
-   `fetch()`, no popups; prefer **data-driven rendering** over code strings.
+4. **VS Code is the most restrictive host in the currently validated set for
+   the recorded UI/CSP capabilities.** A pass there does not establish support
+   in unknown hosts or for unvalidated capabilities. No `eval`/`new Function()`,
+   no external CDN `<script>`, no external `fetch()`, no popups; prefer
+   **data-driven rendering** over code strings.
 5. **Host-side invariants** (host-rendering.md): read the UI resource URI from
    **both** `_meta` shapes; render untrusted apps through a **different-origin
    sandbox proxy** and grant capabilities per resource; validate `postMessage`
@@ -103,6 +105,9 @@ You may be consumed by *any* agent, so do not trust prose alone:
    via `sampling/createMessage`), declaring `capabilities.sampling` is **not
    enough** — you must also register the `CreateMessageRequestSchema` handler, on
    the client that carries the tile's `tools/call`, or the app silently "declines".
+   Target hosts may add a third authorization gate: VS Code requires the exact
+   server entry in `chat.mcp.serverSampling`; App-button requests need
+   `allowedOutsideChat`.
 6. **Differentiate, don't leak.** Teach the *extension* and *host* technique
    generically. Never copy a specific product's private architecture into a
    deliverable.

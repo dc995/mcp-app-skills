@@ -156,6 +156,37 @@ assert(verdict.findings.some((b) => b.feature === "eval"), "eval blocked");
 const chk2 = await rpc("tools/call", { name: "check_compatibility", arguments: { host: "vscode", features: ["webgl", "canvas", "web-workers"] } });
 assert(JSON.parse(chk2.result.content[0].text).verdict === "PASS", "safe set PASS");
 
+const sampling = await rpc("tools/call", {
+  name: "check_compatibility",
+  arguments: { host: "vscode", features: ["sampling"] },
+});
+const samplingVerdict = JSON.parse(sampling.result.content[0].text);
+assert(samplingVerdict.verdict === "CONDITIONAL", "sampling must be CONDITIONAL");
+assert(
+  samplingVerdict.findings[0].requirements.includes(
+    "per-server-authorization:allowedOutsideChat-for-app-ui",
+  ),
+  "sampling must surface outside-chat authorization",
+);
+
+const clipboardImage = await rpc("tools/call", {
+  name: "check_compatibility",
+  arguments: { host: "vscode", features: ["clipboard-image-write"] },
+});
+assert(
+  JSON.parse(clipboardImage.result.content[0].text).verdict === "PASS",
+  "dated direct-gesture clipboard-image evidence must PASS",
+);
+
+const chatImage = await rpc("tools/call", {
+  name: "check_compatibility",
+  arguments: { host: "vscode", features: ["ui-message-image"] },
+});
+assert(
+  JSON.parse(chatImage.result.content[0].text).verdict === "UNKNOWN",
+  "unvalidated app-to-chat image delivery must be UNKNOWN",
+);
+
 const multi = await rpc("tools/call", {
   name: "check_multi_host_compatibility",
   arguments: {

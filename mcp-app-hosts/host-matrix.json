@@ -1,7 +1,7 @@
 {
   "$schema": "./host-matrix.schema.json",
   "schemaVersion": "1.0.0",
-  "revision": "2026-07-17",
+  "revision": "2026-07-31",
   "hosts": {
     "vscode": {
       "name": "VS Code Insiders",
@@ -27,14 +27,20 @@
         "web-speech": false,
         "clipboard-write": "varies",
         "allow-same-origin": true,
-        "populates-host-capabilities-permissions": false
+        "populates-host-capabilities-permissions": false,
+        "notes": "A direct-user-gesture PNG ClipboardItem write succeeded in the validated build even though hostCapabilities.sandbox.permissions was absent. Feature-detect the browser API, catch rejection and retain a fallback; do not infer background or unrestricted clipboard access."
       },
       "server-initiated": {
         "sampling": true,
+        "sampling-requirements": [
+          "stateful-or-bidirectional-transport",
+          "per-server-authorization:allowedOutsideChat-for-app-ui",
+          "display-frame-fallback"
+        ],
         "elicitation": "unvalidated",
         "resource-subscriptions": "unvalidated",
         "requires-stateful-transport": true,
-        "notes": "VS Code negotiates a session and supports sampling/createMessage natively (first call shows a consent dialog). The server MUST use a stateful transport (sessionIdGenerator: randomUUID); the default stateless transport silently times out server-initiated requests. Elicitation/subscriptions not yet validated firsthand."
+        "notes": "VS Code negotiates a session and supports sampling/createMessage. Three gates are independent: stateful transport, advertised sampling capability, and per-server authorization through chat.mcp.serverSampling. MCP App UI actions are outside-chat sampling and require allowedOutsideChat=true for the exact server entry. Direct-chat authorization was not part of this probe. Without authorization the host may return stopReason=cancelled even though sampling was advertised. Reload/reconnect after changing policy. Elicitation/subscriptions not yet validated firsthand."
       },
       "secure-context": true,
       "iframe-origin": "vscode-webview://",
@@ -54,7 +60,10 @@
         "cdn-script-tags": false,
         "cdn-link-tags": false,
         "dynamic-import": false,
-        "window-open": false
+        "window-open": false,
+        "clipboard-image-write": true,
+        "message-image-capability-advertised": false,
+        "ui-message-image": "unvalidated"
       },
       "bundling": {
         "requires-singlefile": true,
@@ -73,15 +82,28 @@
         "npm-bundled rendering libraries that draw to canvas/WebGL/SVG with no string-to-code (e.g. canvas chart libs, data-driven 3D)",
         "map libraries whose tiles load as <img> elements (img-src is permissive) and that npm-bundle cleanly",
         "web-component / view libraries that template without eval or new Function()",
-        "Media played through a host-approved same-origin resource or host-mediated player, triggered by a user gesture"
+        "Media played through a host-approved same-origin resource or host-mediated player, triggered by a user gesture",
+        "PNG bitmap copied with navigator.clipboard.write + ClipboardItem inside a direct user gesture, with a text/path fallback"
       ],
-      "last-validated": "2026-06-17",
+      "last-validated": "2026-07-31",
       "evidence": [
         {
           "kind": "empirical",
           "date": "2026-06-17",
           "source": "evidence/vscode-2026-06.md",
           "summary": "Validated CSP, sandbox, media, permissions and sampling behavior in VS Code Insiders."
+        },
+        {
+          "kind": "empirical",
+          "date": "2026-07-24",
+          "source": "evidence/vscode-2026-07.md",
+          "summary": "Validated direct-user-gesture PNG ClipboardItem writes; runtime sandbox permission metadata remained absent and direct app-to-chat image messaging remained unvalidated."
+        },
+        {
+          "kind": "empirical",
+          "date": "2026-07-31",
+          "source": "evidence/vscode-2026-07.md",
+          "summary": "Validated outside-chat sampling authorization for an MCP App UI action, including cancellation behavior when the exact per-server grant is absent."
         }
       ]
     },
@@ -103,6 +125,11 @@
       },
       "server-initiated": {
         "sampling": true,
+        "sampling-requirements": [
+          "stateful-or-bidirectional-transport",
+          "host-sampling-handler",
+          "display-frame-fallback"
+        ],
         "elicitation": false,
         "resource-subscriptions": "unvalidated",
         "requires-stateful-transport": true,
@@ -126,7 +153,10 @@
         "cdn-script-tags": true,
         "cdn-link-tags": true,
         "dynamic-import": true,
-        "window-open": true
+        "window-open": true,
+        "clipboard-image-write": "unvalidated",
+        "message-image-capability-advertised": "unvalidated",
+        "ui-message-image": "unvalidated"
       },
       "bundling": {
         "requires-singlefile": false,
@@ -166,6 +196,11 @@
       },
       "server-initiated": {
         "sampling": "unvalidated",
+        "sampling-requirements": [
+          "host-validation",
+          "stateful-or-bidirectional-transport",
+          "display-frame-fallback"
+        ],
         "elicitation": "unvalidated",
         "resource-subscriptions": "unvalidated",
         "requires-stateful-transport": true,
@@ -189,7 +224,10 @@
         "cdn-script-tags": true,
         "cdn-link-tags": true,
         "dynamic-import": true,
-        "window-open": true
+        "window-open": true,
+        "clipboard-image-write": "unvalidated",
+        "message-image-capability-advertised": "unvalidated",
+        "ui-message-image": "unvalidated"
       },
       "bundling": {
         "requires-singlefile": false,
@@ -232,6 +270,11 @@
       },
       "server-initiated": {
         "sampling": true,
+        "sampling-requirements": [
+          "stateful-or-bidirectional-transport",
+          "host-sampling-handler",
+          "display-frame-fallback"
+        ],
         "elicitation": false,
         "resource-subscriptions": "unvalidated",
         "requires-stateful-transport": true,
@@ -255,7 +298,10 @@
         "cdn-script-tags": true,
         "cdn-link-tags": true,
         "dynamic-import": true,
-        "window-open": true
+        "window-open": true,
+        "clipboard-image-write": "unvalidated",
+        "message-image-capability-advertised": "unvalidated",
+        "ui-message-image": "unvalidated"
       },
       "bundling": {
         "requires-singlefile": false,

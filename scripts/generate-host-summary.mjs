@@ -60,12 +60,13 @@ const body = rows.map(
 const generated = [BEGIN, header, separator, ...body, END].join("\n");
 
 const document = await readFile(DOC_PATH, "utf-8");
+const eol = document.includes("\r\n") ? "\r\n" : "\n";
 const start = document.indexOf(BEGIN);
 const end = document.indexOf(END);
 if (start < 0 || end < start) throw new Error("Generated host summary markers not found");
 const next =
   document.slice(0, start) +
-  generated +
+  generated.replaceAll("\n", eol) +
   document.slice(end + END.length);
 
 if (process.argv.includes("--check")) {

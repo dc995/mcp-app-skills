@@ -108,7 +108,7 @@ patterns (handlers, data-driven rendering, host styling), and framework guidance
 | `SKILL.md` | Entry point — decision tree, file structure, port assignment |
 | `pre-build-check.md` | Safety gate: scan planned features against host capability matrix |
 | `scaffold.md` | Templates: `server.ts`, `main.ts` (stateless + stateful), `vite.config.ts`, `package.json` |
-| `sampling.md` | Frame Type B: sampling/elicitation/subscriptions, stateful transport, graceful degradation |
+| `sampling.md` | Frame Type B: sampling/elicitation/subscriptions, stateful transport, host authorization, graceful degradation |
 | `patterns.md` | SDK lifecycle, data-driven rendering, tool visibility, host styling, server proxying |
 | `references/sdk-api.md` | Quick reference: `App` class, `registerAppTool`, `registerAppResource` |
 

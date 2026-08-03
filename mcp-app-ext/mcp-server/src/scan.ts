@@ -170,10 +170,10 @@ export async function scanApp(appPath: string): Promise<{
     ) {
       findings.push({
         rule: "postmessage-source-validation",
-        severity: "critical",
+        severity: "warning",
         file: relative,
         line: 1,
-        message: "Message bridge does not visibly bind events to the expected iframe contentWindow.",
+        message: "Could not verify that the message bridge binds events to an expected source.",
       });
     }
 

@@ -75,10 +75,17 @@ export const FEATURE_PATHS: Record<string, readonly string[]> = {
   camera: ["sandbox", "camera"],
   geolocation: ["sandbox", "geolocation"],
   "clipboard-write": ["sandbox", "clipboard-write"],
+  "clipboard-image-write": ["features", "clipboard-image-write"],
+  "message-image-capability": ["features", "message-image-capability-advertised"],
+  "ui-message-image": ["features", "ui-message-image"],
   sampling: ["server-initiated", "sampling"],
   elicitation: ["server-initiated", "elicitation"],
   "resource-subscriptions": ["server-initiated", "resource-subscriptions"],
   "secure-context": ["secure-context"],
+};
+
+const FEATURE_REQUIREMENT_PATHS: Record<string, readonly string[]> = {
+  sampling: ["server-initiated", "sampling-requirements"],
 };
 
 function valueAtPath(value: unknown, segments: readonly string[]): unknown {
@@ -99,6 +106,18 @@ export function getCapabilityStatus(
   const value = valueAtPath(host, segments);
   const parsed = CapabilityStatusSchema.safeParse(value);
   return parsed.success ? parsed.data : undefined;
+}
+
+export function getCapabilityRequirements(
+  host: Matrix["hosts"][string],
+  feature: string,
+): string[] {
+  const segments = FEATURE_REQUIREMENT_PATHS[feature];
+  if (!segments) return [];
+  const value = valueAtPath(host, segments);
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string")
+    ? value
+    : [];
 }
 
 export type MatrixValidation = {

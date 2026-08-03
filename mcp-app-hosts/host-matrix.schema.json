@@ -71,12 +71,18 @@
           "type": "object",
           "required": [
             "sampling",
+            "sampling-requirements",
             "elicitation",
             "resource-subscriptions",
             "requires-stateful-transport"
           ],
           "properties": {
             "sampling": { "$ref": "#/$defs/status" },
+            "sampling-requirements": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": { "type": "string", "minLength": 1 }
+            },
             "elicitation": { "$ref": "#/$defs/status" },
             "resource-subscriptions": { "$ref": "#/$defs/status" },
             "requires-stateful-transport": { "type": "boolean" },

@@ -34,11 +34,15 @@ transport and whether you depend on host capabilities.
 | Behavior | Tool in → content + UI out. No server-initiated traffic. | Server calls **back** into the client mid-tool. |
 | Triggers | — | `sampling/createMessage`, `elicitation/create`, resource subscriptions, cross-call progress |
 | Transport | **Stateless** (`sessionIdGenerator: undefined`) | **Stateful** (`sessionIdGenerator: () => randomUUID()` + session map) |
-| Host dependency | None beyond tools/resources | Host must advertise `sampling` / `elicitation`; **always ship a Type A fallback** |
+| Host dependency | None beyond tools/resources | Host must advertise the capability and may require per-server authorization; **always ship a Type A fallback** |
 | Guide | this skill + [scaffold.md](scaffold.md) | [sampling.md](sampling.md) |
 
 **Rule of thumb:** any server→client *request* (not just a notification) ⇒ Type B
 / stateful. If your tools only return content, you are Type A — stay there.
+
+For VS Code sampling, capability negotiation is necessary but not sufficient:
+authorize the exact server under `chat.mcp.serverSampling`. App-button requests
+need `allowedOutsideChat`; validate other invocation contexts separately.
 
 ## Sub-Files
 

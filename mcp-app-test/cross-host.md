@@ -91,8 +91,9 @@ for (const host of HOSTS) {
 Display-Frame (Type A) apps are fully covered by the patterns above. **Type B**
 apps additionally call *back* into the client (`sampling/createMessage`,
 `elicitation/create`, resource subscriptions). These need a **stateful** server
-transport AND a host that advertises the capability — so they have their own
-cross-host expectations. See [`../mcp-app-build/sampling.md`](../mcp-app-build/sampling.md).
+transport, a host that advertises the capability, and any host-specific
+authorization — so they have their own cross-host expectations. See
+[`../mcp-app-build/sampling.md`](../mcp-app-build/sampling.md).
 
 Because these are server→client requests, the meaningful assertion is at the
 **tool-result** layer (Layer 1), not the rendered DOM: a Type B tool must return
@@ -119,6 +120,14 @@ for (const host of HOSTS) {
       // Must NOT hang or -32001; must return a usable fallback.
       expect(textOf(res)).toMatch(/host declined|no hint available/i);
     });
+
+    test("sampling cancellation preserves state", async () => {
+      const before = await readAppState();
+      const res = await callSamplingToolWithCancelledHost();
+      expect(statusOf(res)).toMatch(/declined|cancelled/i);
+      expect(statusOf(res)).not.toMatch(/applied|success/i);
+      expect(await readAppState()).toEqual(before);
+    });
   });
 }
 ```
@@ -129,6 +138,12 @@ server itself negotiates a session (an `initialize` response carrying an
 `Mcp-Session-Id` header). If it doesn't, the failure is the *server's* transport,
 not the host. Validate the round-trip headless over **stdio** (inherently
 bidirectional) per `sampling.md`, then layer the host-specific expectations here.
+
+**Probe authorization separately.** In VS Code, an MCP App button is outside-chat
+sampling and requires `allowedOutsideChat: true` for the exact configured server
+entry under `chat.mcp.serverSampling`. A host can advertise `sampling` and still
+return `stopReason: "cancelled"` when this grant is missing. Reload/reconnect
+after changing the setting before judging the fix.
 
 ## Testing a Local Server in a Remote Host (`cloudflared`)
 

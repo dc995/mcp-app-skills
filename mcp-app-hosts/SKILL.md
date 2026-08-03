@@ -41,7 +41,10 @@ accessibility and security behavior are recorded through
 **Server-initiated requests** (sampling, elicitation, resource subscriptions)
 require a **stateful** server transport (`sessionIdGenerator: randomUUID`) — the
 default stateless transport silently times them out. They also require the host's
-MCP *client* to advertise the capability. See `host-matrix.json`
+MCP *client* to advertise the capability and may require host-specific
+authorization. In VS Code, App-button sampling requires the exact server entry
+under `chat.mcp.serverSampling` with `allowedOutsideChat: true`; other invocation
+contexts require separate validation. See `host-matrix.json`
 (`server-initiated` block) and `mcp-app-build/sampling.md`. Always ship a Display‑Frame
 fallback so the app degrades where the host can't sample/elicit.
 

@@ -14,7 +14,9 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "validate:matrix": "node validate-matrix.mjs",
     "smoke": "npm run build && node smoke.mjs",
-    "test": "npm run typecheck && npm run validate:matrix && npm run smoke"
+    "audit:prod": "node ../../scripts/audit-production.mjs",
+    "test": "npm run typecheck && npm run validate:matrix && npm run smoke",
+    "verify": "npm test && npm run audit:prod && node ../../scripts/validate-repo.mjs && node ../../scripts/generate-host-summary.mjs --check"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",

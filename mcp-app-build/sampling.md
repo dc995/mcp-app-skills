@@ -7,7 +7,7 @@ content + a `ui://` resource, the host renders it, done. These run on the defaul
 Some apps need the **server to call back into the client mid-tool** — borrow the
 host's model (sampling), ask the user a structured question (elicitation), stream
 progress, or push live resource updates. These are **Interactive / Agentic Frames
-(Type B)**, and they have two hard requirements the scaffold does not give you by
+(Type B)**, and they have three hard requirements the scaffold does not give you by
 default.
 
 > Rule of thumb: **any server→client *request* (not just a notification) makes
@@ -16,7 +16,7 @@ default.
 
 ---
 
-## The two requirements
+## The three requirements
 
 ### 1. A stateful transport (server side)
 
@@ -66,6 +66,41 @@ actually issues `sampling/createMessage`. A host can declare it universally.
 > has a full reference implementation of this handler backed by the GitHub Copilot SDK
 > (`sampleViaCopilot`), including **agentic sampling** (server-offered tools the model may call
 > mid-sample).
+
+### 3. Host authorization for the invocation context
+
+Capability negotiation answers **can this host handle sampling?** It does not
+answer **has this server been authorized to sample here?** Hosts may gate
+server-initiated model calls separately by server and invocation context.
+
+VS Code does this through `chat.mcp.serverSampling`. A button inside an MCP App
+that calls a server tool via `app.callServerTool()` is an **outside-chat**
+sampling request even though the app is rendered in Chat. Grant the exact MCP
+server entry permission in workspace settings:
+
+```json
+{
+  "chat.mcp.serverSampling": {
+    "<workspace-or-config-label>: <server-name>": {
+      "allowedOutsideChat": true
+    }
+  }
+}
+```
+
+- `allowedOutsideChat` covers MCP App UI actions such as **Get Hint** or
+  **Enhance Prompt**.
+- Direct-chat authorization is a separate invocation context and was not part
+  of the recorded MCP App UI probe; validate it before relying on it.
+- Copy the server key VS Code records for the configured MCP entry; do not
+  assume that the bare server name is sufficient.
+- Reload the VS Code window or reconnect the MCP server after changing this
+  policy. The active connection can retain the previous authorization snapshot.
+
+Without authorization, VS Code can still advertise `sampling` but resolve
+`sampling/createMessage` with a cancellation result such as
+`stopReason: "cancelled"`. Treat that as a normal decline: preserve user state,
+do not charge or mutate anything, and explain how to enable the permission.
 
 ---
 
@@ -117,13 +152,17 @@ it, and degrades to plain display everywhere else.
 
 1. **Connect probe** — initialize and dump `getClientCapabilities()`. Confirm
    `sampling` / `elicitation` is present. If absent, the host can't drive Type B.
-2. **Transport probe** — confirm a session id round-trips: `initialize` →
+2. **Authorization probe** — for VS Code, confirm the exact server entry in
+   `chat.mcp.serverSampling` permits the invocation context. The validated App
+   button path needs `allowedOutsideChat`; probe other contexts separately.
+3. **Transport probe** — confirm a session id round-trips: `initialize` →
    capture `Mcp-Session-Id` → follow-up POST with that header + a GET for SSE. A
    400 means the host isn't doing stateful sessions.
-3. **Round-trip probe** — call the sampling tool end-to-end; assert it returns
-   instead of erroring `-32001`. The single most decisive test.
-4. **Degradation probe** — point the app at a host *without* `sampling` and
-   assert it returns the fallback, not a hang.
+4. **Round-trip probe** — call the sampling tool end-to-end; assert it returns a
+   real model response instead of erroring `-32001` or resolving as cancelled.
+   This is the single most decisive test.
+5. **Degradation probe** — remove capability or authorization and assert the app
+   returns the fallback without hanging, overwriting state, or reporting success.
 
 See [`../mcp-app-hosts/host-matrix.json`](../mcp-app-hosts/host-matrix.json)
 (`server-initiated` block per host) for which hosts have been validated, and
@@ -141,7 +180,7 @@ flowchart TD
   C -- sampling/createMessage --> D[host needs 'sampling']
   C -- elicitation/create --> E[host needs 'elicitation']
   C -- resources/subscribe --> F[host needs subscriptions]
-  D --> TB[Type B — Stateful transport<br/>+ client capability + Type A fallback]
+  D --> TB[Type B — Stateful transport<br/>+ client capability + host authorization<br/>+ Type A fallback]
   E --> TB
   F --> TB
 ```
