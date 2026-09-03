@@ -151,7 +151,15 @@ function normalizeToolResult(raw) {
 }
 ```
 
-## Sampling Bridge — server → host → model
+## Deprecated Sampling Bridge — server → host → model
+
+This is a compatibility recipe for hosts that support
+`sampling/createMessage`. MCP `2026-07-28` deprecates Sampling; do not make new
+host features depend directly on this bridge. A modern MRTR flow may embed a
+Sampling request, in which case the client must still advertise Sampling and
+register this handler before it retries the original operation. Prefer a
+protocol-neutral model service and an explicit provider connection. See
+`../mcp-app-build/mcp-v2.md`.
 
 The headline host-authoring capability: let downstream MCP servers borrow the host's Copilot
 model via `sampling/createMessage`. This is the **concrete implementation** of the host/client
@@ -196,7 +204,7 @@ export async function sampleViaCopilot(reqz) {
 
 - The handler is **inert** for Display-Frame apps — it only fires when a server actually issues
   `sampling/createMessage`, so a host can declare `capabilities.sampling` universally.
-- The downstream server still needs a **stateful transport** for the reverse channel to resolve
+- In the legacy profile, the downstream server still needs a **stateful transport** for the reverse channel to resolve
   (see `sampling.md`); the host side here is necessary but not sufficient on its own.
 
 > **Gotcha — declaring `capabilities.sampling` WITHOUT registering the handler = silent decline.**

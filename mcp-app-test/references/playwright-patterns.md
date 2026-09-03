@@ -20,11 +20,21 @@ export async function isServerReachable(port: number): Promise<boolean> {
       headers: {
         "Content-Type": "application/json",
         "Accept": "application/json, text/event-stream",
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "tools/list",
       },
       body: JSON.stringify({
-        jsonrpc: "2.0", id: 1, method: "initialize",
-        params: { protocolVersion: "2025-11-25", capabilities: {},
-                  clientInfo: { name: "test", version: "1.0.0" } },
+        jsonrpc: "2.0", id: 1, method: "tools/list",
+        params: {
+          _meta: {
+            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+            "io.modelcontextprotocol/clientInfo": {
+              name: "test",
+              version: "1.0.0",
+            },
+            "io.modelcontextprotocol/clientCapabilities": {},
+          },
+        },
       }),
       signal: AbortSignal.timeout(5000),
     });

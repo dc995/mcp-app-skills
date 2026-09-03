@@ -309,7 +309,13 @@ token round-tripped through a language model is inherently fragile.
   process-wide `NODE_TLS_REJECT_UNAUTHORIZED = "0"`; it disables verification for
   every outbound TLS connection in the process.
 
-## 11. Interactive tiles that borrow the host model (sampling)
+## 11. Deprecated Sampling support for interactive tiles
+
+This section records the unsolicited reverse-channel Sampling bridge validated
+by existing hosts. MCP `2026-07-28` deprecates Sampling; new host work should
+prefer an explicit model-provider connection. Modern MRTR may still embed a
+Sampling request, but that flow does not require the legacy stateful transport
+described below. See `../mcp-app-build/mcp-v2.md`.
 
 Some tiles do more than render — they ask the **host's model** to do work (a hint
 generator, a "summarize this" button, an autocompleter). The app's button calls a
@@ -335,8 +341,8 @@ Routing matters: the sampling request returns over **whichever client carried th
 UI's `tools/call`**. If your host proxies tile tool calls on a per-call client,
 that per-call client is the one that needs the handler — not (only) the long-lived
 agent session. Thread the model-fulfiller down to where you build the proxy
-client. The downstream server also needs a **stateful transport** (a negotiated
-session id) for the reverse request to resolve.
+client. In the legacy profile, the downstream server also needs a **stateful
+transport** (a negotiated session id) for the reverse request to resolve.
 
 ## Quick triage
 

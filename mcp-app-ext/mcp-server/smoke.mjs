@@ -81,6 +81,16 @@ const matrix = await rpc("tools/call", {
 const matrixResult = JSON.parse(matrix.result.content[0].text);
 assert(matrixResult.valid === true, "host matrix valid: " + JSON.stringify(matrixResult.errors));
 
+const modernGuidance = await rpc("tools/call", {
+  name: "get_guidance",
+  arguments: { topic: "mcp-v2" },
+});
+const modernGuidanceText = modernGuidance.result?.content?.[0]?.text ?? "";
+assert(modernGuidanceText.includes("2026-07-28"), "modern guidance protocol version");
+assert(modernGuidanceText.includes("server/discover"), "modern guidance discovery");
+assert(modernGuidanceText.includes("input_required"), "modern guidance MRTR");
+assert(modernGuidanceText.includes("legacy"), "modern guidance compatibility boundary");
+
 // The callable validator must reject schema-invalid matrices, not only missing
 // capabilities discovered by the secondary consistency pass.
 const { loadMatrix, validateMatrix } = await import("./dist/matrix.js");

@@ -4,7 +4,7 @@
 
 ```bash
 # Production
-npm install @modelcontextprotocol/ext-apps @modelcontextprotocol/sdk zod express
+npm install @modelcontextprotocol/ext-apps @modelcontextprotocol/server @modelcontextprotocol/core @modelcontextprotocol/node @modelcontextprotocol/sdk zod express
 
 # Dev
 npm install -D typescript vite vite-plugin-singlefile concurrently cross-env tsx @types/node @types/express
@@ -12,7 +12,17 @@ npm install -D typescript vite vite-plugin-singlefile concurrently cross-env tsx
 
 Always use `npm install` — never guess version numbers.
 
-## server.ts Template
+Check the installed ext-apps peer range before removing
+`@modelcontextprotocol/sdk`. The command includes it for the currently published
+v1-compatible extension helper. Remove it only after ext-apps supports SDK v2
+and the legacy adapter is retired. Never pass a v1 `McpServer` object to a v2
+handler. See [mcp-v2.md](mcp-v2.md).
+
+## Legacy ext-apps server template
+
+This template uses the currently published ext-apps helper with SDK v1. Keep it
+inside the legacy compatibility adapter until ext-apps publishes a compatible
+SDK v2 server API.
 
 ```typescript
 import {
@@ -27,7 +37,7 @@ import { z } from "zod";
 
 const DIST_DIR = path.join(import.meta.dirname, "dist");
 
-export function createServer(): McpServer {
+export function createLegacyAppServer(): McpServer {
   const server = new McpServer({
     name: "<App Name> Server",
     version: "1.0.0",
@@ -61,7 +71,53 @@ export function createServer(): McpServer {
 }
 ```
 
-## main.ts Template
+## Modern `2026-07-28` transport entry points
+
+Build the modern server with SDK v2 objects only. When ext-apps supports SDK v2,
+add its app tool/resource registrations to this factory; until then, preserve a
+text fallback and route the UI extension through the isolated compatibility
+profile.
+
+```typescript
+import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
+import { serveStdio } from "@modelcontextprotocol/server/stdio";
+import { toNodeHandler } from "@modelcontextprotocol/node";
+import { z } from "zod";
+
+function createModernServer(): McpServer {
+  const server = new McpServer({
+    name: "<App Name> Server",
+    version: "1.0.0",
+  });
+  server.registerTool(
+    "<tool-name>",
+    {
+      title: "<Tool Title>",
+      description: "<What the tool does>",
+      inputSchema: z.object({}),
+    },
+    async (args) => ({
+      content: [{ type: "text", text: JSON.stringify(args) }],
+    }),
+  );
+  return server;
+}
+
+const modern = createMcpHandler(() => createModernServer(), {
+  legacy: "reject",
+});
+const nodeHandler = toNodeHandler(modern);
+
+// Mount nodeHandler on POST /mcp after Origin/auth/body-limit middleware.
+// For stdio:
+const stdio = serveStdio(() => createModernServer(), { legacy: "reject" });
+```
+
+Use `isLegacyRequest` only at a deliberate dual-era boundary. Never route a
+malformed or failed modern request into the legacy handler. Do not add a session
+map to the modern path.
+
+## Legacy SDK v1 main.ts compatibility template
 
 ```typescript
 import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
@@ -69,7 +125,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { NextFunction, Request, Response } from "express";
-import { createServer } from "./server.js";
+import { createLegacyAppServer } from "./server.js";
 
 const port = parseInt(process.env.PORT ?? "<YOUR_PORT>", 10);
 
@@ -94,14 +150,14 @@ async function startHTTP() {
   });
 
   app.all("/mcp", async (req: Request, res: Response) => {
-    const server = createServer();
-    // STATELESS transport: a fresh server+transport per request. Correct for
-    // "Display Frame" apps (tool in → UI out). ⚠️ This BREAKS server-initiated
+    const server = createLegacyAppServer();
+    // Legacy stateless v1 transport: a fresh server+transport per request.
+    // Correct for display-only compatibility. This BREAKS legacy server-initiated
     // requests (sampling/createMessage, elicitation, resource subscriptions):
     // the client's reply arrives on a separate POST that lands on a new
     // transport instance, so the original request never resolves and the tool
     // times out (-32001). If your app calls back into the client, use the
-    // STATEFUL template below instead. See sampling.md (Frame Type B).
+    // compatibility requests; use the bounded stateful template below instead.
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on("close", () => {
       void transport.close().catch((error) =>
@@ -121,20 +177,20 @@ async function startHTTP() {
 }
 
 async function startStdio() {
-  await createServer().connect(new StdioServerTransport());
+  await createLegacyAppServer().connect(new StdioServerTransport());
 }
 
 if (process.argv.includes("--stdio")) startStdio();
 else startHTTP();
 ```
 
-## main.ts Template — STATEFUL (Frame Type B: sampling / elicitation / subscriptions)
+## Legacy SDK v1 stateful template
 
-Use this **only** if your server calls back into the client (sampling,
-elicitation, server-driven progress, or resource subscriptions). It keeps a
+Use this **only** when a declared legacy counterpart requires callbacks such as
+sampling, elicitation, or old resource subscriptions. It keeps a
 transport per session keyed by `Mcp-Session-Id` so the client's reply routes
-back to the same instance. See [sampling.md](sampling.md) for when this is
-required and the matching client-side capability.
+back to the same instance. Do not use it for modern MRTR or application state.
+See [sampling.md](sampling.md).
 
 ```typescript
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
@@ -205,7 +261,7 @@ app.all("/mcp", async (req: Request, res: Response) => {
       res.status(503).json({ error: "Session capacity reached" });
       return;
     }
-    const server = createServer();
+    const server = createLegacyAppServer();
     const sessionTransport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
       onsessioninitialized: (id) =>

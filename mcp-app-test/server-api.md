@@ -2,9 +2,10 @@
 
 No browser needed. Tests MCP protocol compliance, tool schemas, and resource serving via HTTP.
 
-## MCP Initialize Request Pattern
+## Modern MCP `2026-07-28` Request Pattern
 
-Every MCP server health check starts with the initialize handshake:
+Modern health checks do not initialize a protocol session. Send a
+self-contained request with routing headers and request `_meta`:
 
 ```typescript
 async function readJsonRpc(resp: Response): Promise<unknown> {
@@ -19,51 +20,74 @@ async function readJsonRpc(resp: Response): Promise<unknown> {
   return JSON.parse(body);
 }
 
-async function mcpInitialize(port: number): Promise<unknown> {
+function encodeMcpHeaderValue(value: string): string {
+  const isPlainAscii =
+    /^[\x20-\x7e]+$/.test(value) &&
+    value.trim() === value &&
+    !value.startsWith("=?base64?");
+  return isPlainAscii
+    ? value
+    : `=?base64?${Buffer.from(value, "utf8").toString("base64")}?=`;
+}
+
+async function modernRequest(
+  port: number,
+  method: string,
+  params: Record<string, unknown> = {},
+): Promise<{ response: Response; body: unknown }> {
+  const name =
+    typeof params.name === "string"
+      ? params.name
+      : typeof params.uri === "string"
+        ? params.uri
+        : undefined;
   const resp = await fetch(`http://localhost:${port}/mcp`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "Accept": "application/json, text/event-stream",
+      "MCP-Protocol-Version": "2026-07-28",
+      "Mcp-Method": method,
+      ...(name ? { "Mcp-Name": encodeMcpHeaderValue(name) } : {}),
     },
     body: JSON.stringify({
       jsonrpc: "2.0",
       id: 1,
-      method: "initialize",
+      method,
       params: {
-        protocolVersion: "2025-11-25",
-        capabilities: {},
-        clientInfo: { name: "test-client", version: "1.0.0" },
+        ...params,
+        _meta: {
+          "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+          "io.modelcontextprotocol/clientInfo": {
+            name: "test-client",
+            version: "1.0.0",
+          },
+          "io.modelcontextprotocol/clientCapabilities": {},
+        },
       },
     }),
   });
-  return readJsonRpc(resp);
+  return { response: resp, body: await readJsonRpc(resp) };
 }
 ```
 
+Prefer the official SDK v2 client for general integration tests. This raw helper
+is for focused wire assertions and assumes the operation has no schema fields
+mapped to additional `Mcp-Param-*` headers.
+
 ### What to Verify
-- Response has `protocolVersion`, `serverInfo.name`, `capabilities`
-- `capabilities.tools` is present (server has tools)
+- `server/discover` reports support for `2026-07-28`
+- `tools/list` succeeds without `initialize` or `Mcp-Session-Id`
+- Response has `resultType` and server metadata
 - Server reports expected tool count
+- `Mcp-Method`/body and `Mcp-Name`/tool disagreement fails
+- Concurrent requests do not depend on shared transport state
 
 ## Tool Call Pattern
 
 ```typescript
 async function callTool(port: number, name: string, args: Record<string, unknown>) {
-  const resp = await fetch(`http://localhost:${port}/mcp`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/json, text/event-stream",
-    },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 2,
-      method: "tools/call",
-      params: { name, arguments: args },
-    }),
-  });
-  return readJsonRpc(resp);
+  return modernRequest(port, "tools/call", { name, arguments: args });
 }
 ```
 
@@ -76,20 +100,7 @@ async function callTool(port: number, name: string, args: Record<string, unknown
 
 ```typescript
 async function readResource(port: number, uri: string) {
-  const resp = await fetch(`http://localhost:${port}/mcp`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/json, text/event-stream",
-    },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 3,
-      method: "resources/read",
-      params: { uri },
-    }),
-  });
-  return readJsonRpc(resp);
+  return modernRequest(port, "resources/read", { uri });
 }
 ```
 
@@ -98,10 +109,9 @@ async function readResource(port: number, uri: string) {
 - HTML contains `<script` tag (bundled JS present)
 - MIME type is `text/html;profile=mcp-app`
 
-For a stateful server, capture the `MCP-Session-Id` response header from
-`initialize` and send it on every subsequent request. Prefer the official SDK
-client for full lifecycle/session tests; raw JSON-RPC is useful only for focused
-wire-level assertions.
+For a declared legacy/sessionful compatibility profile, keep separate tests that
+capture `Mcp-Session-Id` from `initialize`. Do not use those fixtures as the
+health check for the modern endpoint.
 
 ## Server Registry Pattern
 
@@ -120,12 +130,22 @@ Iterate over this for health checks:
 
 ```typescript
 for (const [id, info] of Object.entries(SERVERS)) {
-  test(`${id} server responds to MCP initialize`, async () => {
-    const result = await mcpInitialize(info.port);
-    expect(result).toHaveProperty("result.serverInfo");
+  test(`${id} server responds to modern tools/list`, async () => {
+    const { response, body } = await modernRequest(info.port, "tools/list");
+    expect(response.headers.has("Mcp-Session-Id")).toBe(false);
+    expect(body).toHaveProperty("result.tools");
   });
 }
 ```
+
+## MRTR and application-state tests
+
+- Retry `input_required` responses with `inputResponses` on a different server
+  instance.
+- Tamper with, replay, expire, and cross-Realm-test `requestState`.
+- Test application handles separately: missing, expired, cross-subject and
+  cross-Realm handles must fail closed.
+- Verify private `ttlMs`/`cacheScope` results never cross cache partitions.
 
 ## AppHub REST API Testing
 

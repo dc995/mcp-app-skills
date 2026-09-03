@@ -107,8 +107,9 @@ patterns (handlers, data-driven rendering, host styling), and framework guidance
 |------|---------|
 | `SKILL.md` | Entry point — decision tree, file structure, port assignment |
 | `pre-build-check.md` | Safety gate: scan planned features against host capability matrix |
-| `scaffold.md` | Templates: `server.ts`, `main.ts` (stateless + stateful), `vite.config.ts`, `package.json` |
-| `sampling.md` | Frame Type B: sampling/elicitation/subscriptions, stateful transport, host authorization, graceful degradation |
+| `mcp-v2.md` | MCP `2026-07-28`: SDK v2, stateless requests, MRTR, handles, caching, auth and bounded legacy compatibility |
+| `scaffold.md` | Templates: `server.ts`, modern SDK v2 entry points, bounded legacy transports, vite and package setup |
+| `sampling.md` | Modern interactive-request alternatives plus legacy sampling/elicitation authorization and degradation |
 | `patterns.md` | SDK lifecycle, data-driven rendering, tool visibility, host styling, server proxying |
 | `references/sdk-api.md` | Quick reference: `App` class, `registerAppTool`, `registerAppResource` |
 
@@ -164,7 +165,7 @@ Playwright E2E tests, cross-host validation, and debugging guidance.
 
 Threat-model MCP Apps, servers and custom hosts. Covers different-origin iframe
 isolation, bridge validation, Streamable HTTP security, OAuth, SSRF, XSS,
-prompt/tool injection, secrets and session limits.
+prompt/tool injection, secrets, MRTR/application handles and legacy session limits.
 
 **Files:**
 
@@ -173,14 +174,14 @@ prompt/tool injection, secrets and session limits.
 | `SKILL.md` | Security review entry point and checklist |
 | `threat-model.md` | Assets, trust modes, boundaries and primary threats |
 | `host-security.md` | Sandbox origin, CSP, postMessage and host-mediated actions |
-| `server-security.md` | HTTP/session, OAuth, egress and model-context controls |
+| `server-security.md` | Stateless HTTP, MRTR/handles, legacy sessions, OAuth, egress and model-context controls |
 
 ### mcp-app-ext (agent + MCP server)
 
 **Conductor** — a full-stack agent for the MCP Apps *Extension* (not a single app).
 Where the specialized skills above are passive references, `mcp-app-ext` is the **active**
 layer: an agent persona that composes the whole stack (MCP server → UI resource →
-host → stateful session) plus a companion MCP server that turns the skills'
+host → explicit application state) plus a companion MCP server that turns the skills'
 matrix, validation, scanning and guidance into callable tools.
 
 **Files:**

@@ -1,24 +1,47 @@
-# Server-Initiated Requests — Sampling, Elicitation, Subscriptions (Frame Type B)
+# Interactive Requests — Modern MRTR and Legacy Host Callbacks
+
+For new work, use MCP `2026-07-28`. Modern MCP is stateless: it does not keep a
+core protocol session or send unsolicited server-to-client requests over a
+reverse channel.
+
+- For user input needed during a call, return `resultType: "input_required"`
+  with bounded input requests and retry with `inputResponses`.
+- MRTR may embed a deprecated Sampling request. If that compatibility path is
+  supported, the client advertises Sampling, handles the embedded request, and
+  retries the original operation with the resulting `inputResponses`.
+- Integrity-protect and expire `requestState`; bind it to the operation,
+  authenticated subject and Realm.
+- For state across independent tool calls, mint an explicit opaque application
+  handle. Do not recover application state from transport identity.
+- For server-side model work, prefer an explicit model-provider connection.
+  Roots, Sampling and MCP Logging are deprecated; do not add new dependencies
+  on them.
+- Use `subscriptions/listen` for modern notification subscriptions.
+
+See [mcp-v2.md](mcp-v2.md) for the canonical modern design.
+
+## Legacy compatibility profile
 
 Most MCP Apps are **Display Frames (Type A)**: a tool is called, it returns
 content + a `ui://` resource, the host renders it, done. These run on the default
 **stateless** transport and need no special handling.
 
-Some apps need the **server to call back into the client mid-tool** — borrow the
-host's model (sampling), ask the user a structured question (elicitation), stream
-progress, or push live resource updates. These are **Interactive / Agentic Frames
-(Type B)**, and they have three hard requirements the scaffold does not give you by
-default.
+Older MCP profiles may need the **server to call back into the client mid-tool**
+over an unsolicited reverse channel — borrow the host's model (sampling), ask
+the user a structured question (elicitation), stream progress, or push live
+resource updates. These are **Interactive / Agentic Frames (Type B)**. Keep the
+following transport requirements only inside an explicitly selected legacy
+adapter. They do not apply when a modern MRTR operation embeds a Sampling input
+request.
 
-> Rule of thumb: **any server→client *request* (not just a notification) makes
-> your app Type B.** Sampling and elicitation are requests; they need a response
-> routed back to the *same* transport.
+> Legacy rule of thumb: a v1 server-to-client request needs its response routed
+> back to the same transport. This is not a modern `2026-07-28` requirement.
 
 ---
 
 ## The three requirements
 
-### 1. A stateful transport (server side)
+### 1. A stateful transport (legacy server side)
 
 `sampling/createMessage` and `elicitation/create` are **server→client requests**.
 The client's reply arrives as a **separate HTTP POST**. With the default
@@ -148,9 +171,10 @@ it, and degrades to plain display everywhere else.
 
 ---
 
-## Cross-host validation (run before relying on Type B in a new host)
+## Cross-host validation for the legacy adapter
 
-1. **Connect probe** — initialize and dump `getClientCapabilities()`. Confirm
+1. **Profile probe** — first prove the host selected the legacy profile. Then
+   initialize and dump `getClientCapabilities()`. Confirm
    `sampling` / `elicitation` is present. If absent, the host can't drive Type B.
 2. **Authorization probe** — for VS Code, confirm the exact server entry in
    `chat.mcp.serverSampling` permits the invocation context. The validated App
@@ -185,6 +209,6 @@ flowchart TD
   F --> TB
 ```
 
-**Checklist to stay Type A (preferred):** no `createMessage`, no `elicitInput`,
-no `resources/subscribe`, and any progress completes within a single best-effort
-tool call. Any one fails → Type B.
+**Modern checklist:** use self-contained requests, MRTR for mid-call input,
+explicit handles for cross-call state, and a Display-Frame fallback. Only enter
+the stateful section above when a declared legacy counterpart requires it.

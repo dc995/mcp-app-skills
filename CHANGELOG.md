@@ -4,6 +4,9 @@
 
 ### Added
 
+- Canonical MCP `2026-07-28` and TypeScript SDK v2 migration guidance covering
+  stateless requests, dual-era adapters, MRTR, application handles, caching,
+  authorization, extensions and conformance
 - Dedicated `mcp-app-security` skill and threat-model references
 - Host matrix JSON Schema, evidence metadata and validation tool
 - Multi-host compatibility and bounded static app scanning tools
@@ -15,7 +18,8 @@
 
 ### Changed
 
-- Updated MCP core examples to protocol version `2025-11-25`
+- Made MCP `2026-07-28` the default for new guidance while retaining
+  `2025-11-25` session behavior as bounded legacy compatibility
 - Updated MCP App MIME guidance to `text/html;profile=mcp-app`
 - Replaced same-origin `srcdoc` host guidance with different-origin sandboxing
 - Secured HTTP, session, OAuth, egress and model-context examples

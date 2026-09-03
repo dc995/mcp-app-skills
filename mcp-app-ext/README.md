@@ -14,7 +14,8 @@ claims tied to dated evidence:
 
 - **`SKILL.md`** — *Conductor*, a router + full-stack meta-skill for the MCP Apps
   **Extension** (not a single app). It owns build/host/test/audit and composes the
-  stack end to end: **MCP server → UI resource (app) → host → stateful session**.
+  stack end to end: **MCP server → UI resource (app) → host → explicit
+  application state**, with MCP `2026-07-28` as the new-work default.
 - **`../.github/agents/mcp-app-ext.agent.md`** — Copilot custom-agent definition.
   It is discovered automatically in this repository or can be installed under
   `~/.copilot/agents/` (or `%USERPROFILE%\.copilot\agents\`).
@@ -27,12 +28,12 @@ claims tied to dated evidence:
   | `validate_host_matrix` | Validates matrix completeness, dates, schema and evidence references. |
   | `scan_app` | Bounded static scan for compatibility and security risks without returning source content. |
   | `get_guidance` | Returns the full text of a skill topic (so a host needs no skill files installed). |
-  | `scaffold` | Returns canonical scaffold guidance for a stack layer (server/app/host/session). |
+  | `scaffold` | Returns canonical scaffold guidance for server/app/host/application-state layers. |
 
 ## The stack Conductor composes
 
 ```
-session   stateful state across turns (e.g. a game, a wizard, a streamed build)
+state    explicit Realm-bound handles across calls (e.g. a game or wizard)
   host    web / React / desktop shell: reads ui:// resource, mounts the iframe,
           runs the postMessage handshake, themes + sandboxes the tile
   app     the UI resource (bundled HTML/JS/CSS)

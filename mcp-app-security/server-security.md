@@ -28,12 +28,29 @@ absence is accepted. Do not accept an arbitrary present origin.
 
 ## Stateful session controls
 
+These controls apply to an explicitly supported legacy/sessionful profile.
+Modern MCP `2026-07-28` requests do not use a core protocol session.
+
 - Generate cryptographically random session IDs.
 - Bind session authorization to the authenticated principal.
 - Enforce TTL and a maximum session count.
 - Return `400` for missing required session IDs and `404` for expired IDs.
 - Handle `DELETE` and close both transport and server.
 - Remove sessions on close, timeout and shutdown.
+
+## Stateless request, MRTR and application-handle controls
+
+- Authorize the principal and Realm before discovery, cache lookup, backend
+  connection, or tool execution.
+- Reject `Mcp-Method`/`Mcp-Name` disagreement with the JSON-RPC body.
+- Partition private `ttlMs`/`cacheScope` metadata by principal and Realm.
+- Treat MRTR `requestState` as untrusted: integrity-protect it, bind it to the
+  operation and identity, expire it, and prevent replay where effects matter.
+- Store application state server-side behind opaque handles containing no
+  credentials or sensitive data.
+- Bind handles to principal and Realm; enforce expiry and explicit close/cancel.
+- Never silently downgrade a modern request after parsing or authorization has
+  begun.
 
 ## Server-side URL fetching
 
