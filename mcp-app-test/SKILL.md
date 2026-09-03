@@ -25,6 +25,11 @@ Multi-layer test strategy for MCP Apps: protocol-level server tests, browser E2E
 | [debugging.md](debugging.md) | ui-inspector, DevTools, postMessage tracing |
 | [references/playwright-patterns.md](references/playwright-patterns.md) | Generic fixtures + helpers distilled from a multi-app validation suite |
 
+For new protocol tests, default to MCP `2026-07-28`: prove self-contained
+requests, `server/discover`, routing headers, cache scope, MRTR, and explicit
+application handles. Keep `initialize`/`Mcp-Session-Id` fixtures in a separately
+named legacy compatibility suite.
+
 ## Quick Start
 
 ### Run the target project's existing tests

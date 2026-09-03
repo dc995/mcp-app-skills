@@ -151,7 +151,54 @@ function normalizeToolResult(raw) {
 }
 ```
 
-## Sampling Bridge — server → host → model
+## Modern MRTR Sampling fulfillment
+
+MCP `2026-07-28` may embed a deprecated `sampling/createMessage` request inside
+an MRTR `input_required` result. The previous server-initiated callback pattern
+is not used. A modern client:
+
+1. advertises Sampling support in its self-describing request metadata;
+2. detects `resultType: "input_required"`;
+3. fulfills each Sampling entry from `inputRequests`;
+4. retries the original request with the keyed results in `inputResponses`, the
+   exact opaque `requestState` when present, and a new JSON-RPC request ID.
+
+Conceptual client loop:
+
+```ts
+let retry = originalParams;
+for (;;) {
+  const result = await sendModernRequest(method, retry);
+  if (result.resultType !== "input_required") return result;
+
+  const inputResponses = {};
+  for (const [key, request] of Object.entries(result.inputRequests ?? {})) {
+    if (request.method === "sampling/createMessage") {
+      inputResponses[key] = await sampleViaCopilot(request.params);
+    } else {
+      inputResponses[key] = await fulfillSupportedInputRequest(request);
+    }
+  }
+
+  retry = {
+    ...originalParams,
+    inputResponses,
+    ...(result.requestState === undefined
+      ? {}
+      : { requestState: result.requestState }),
+  };
+}
+```
+
+Treat `requestState` as opaque and never reuse either it or `inputResponses` for
+another operation.
+
+## Legacy v1 Sampling bridge — server → host → model
+
+The following `setRequestHandler` recipe is only for a v1 compatibility adapter
+where a server sends an unsolicited request over a bidirectional or stateful
+transport. New host features should prefer a protocol-neutral model service
+and an explicit provider connection. See `../mcp-app-build/mcp-v2.md`.
 
 The headline host-authoring capability: let downstream MCP servers borrow the host's Copilot
 model via `sampling/createMessage`. This is the **concrete implementation** of the host/client
@@ -194,12 +241,12 @@ export async function sampleViaCopilot(reqz) {
 }
 ```
 
-- The handler is **inert** for Display-Frame apps — it only fires when a server actually issues
+- The legacy handler is **inert** for Display-Frame apps — it only fires when a v1 server actually issues
   `sampling/createMessage`, so a host can declare `capabilities.sampling` universally.
-- The downstream server still needs a **stateful transport** for the reverse channel to resolve
+- In the legacy profile, the downstream server still needs a **stateful transport** for the reverse channel to resolve
   (see `sampling.md`); the host side here is necessary but not sufficient on its own.
 
-> **Gotcha — declaring `capabilities.sampling` WITHOUT registering the handler = silent decline.**
+> **Legacy gotcha — declaring `capabilities.sampling` WITHOUT registering the handler = silent decline.**
 > The capability advertisement and the `CreateMessageRequestSchema` handler are **two separate
 > steps**. A client that declares `{ capabilities: { sampling: {} } }` but never calls
 > `setRequestHandler(CreateMessageRequestSchema, …)` will make the server's `createMessage`

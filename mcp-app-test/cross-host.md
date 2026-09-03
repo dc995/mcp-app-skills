@@ -86,13 +86,19 @@ for (const host of HOSTS) {
 - `test.skip()` → never runs, won't notice when host adds support
 - `test.fail()` → runs, expects failure. If it PASSES, Playwright flags it → trigger HIT [SUPPORT] discovery
 
-## Frame Type B — Server-Initiated Requests (sampling / elicitation)
+## Interactive requests — modern and legacy
+
+For MCP `2026-07-28`, test `input_required`/`inputResponses`, explicit
+application handles, and `subscriptions/listen` without expecting a core
+protocol session. A retry must be able to land on a different server instance.
 
 Display-Frame (Type A) apps are fully covered by the patterns above. **Type B**
-apps additionally call *back* into the client (`sampling/createMessage`,
-`elicitation/create`, resource subscriptions). These need a **stateful** server
-transport, a host that advertises the capability, and any host-specific
-authorization — so they have their own cross-host expectations. See
+legacy adapters may additionally call *back* into the client over an unsolicited
+reverse channel (`sampling/createMessage`, `elicitation/create`, resource
+subscriptions). These need a **stateful** server transport, a host that
+advertises the capability, and any host-specific authorization — so they have
+their own cross-host expectations. A modern MRTR operation may instead embed a
+deprecated Sampling request without these legacy transport mechanics. See
 [`../mcp-app-build/sampling.md`](../mcp-app-build/sampling.md).
 
 Because these are server→client requests, the meaningful assertion is at the
@@ -132,12 +138,10 @@ for (const host of HOSTS) {
 }
 ```
 
-**Probe the transport first.** A stateless server can never satisfy Type B — the
-request times out with `-32001`. Before asserting host behavior, confirm the
-server itself negotiates a session (an `initialize` response carrying an
-`Mcp-Session-Id` header). If it doesn't, the failure is the *server's* transport,
-not the host. Validate the round-trip headless over **stdio** (inherently
-bidirectional) per `sampling.md`, then layer the host-specific expectations here.
+**Probe the selected profile first.** A stateless v1 server cannot satisfy the
+legacy reverse-request pattern: it times out with `-32001`. Confirm that a
+legacy test negotiated `initialize` and `Mcp-Session-Id`. Modern tests must
+instead prove there is no session header and exercise the MRTR retry.
 
 **Probe authorization separately.** In VS Code, an MCP App button is outside-chat
 sampling and requires `allowedOutsideChat: true` for the exact configured server

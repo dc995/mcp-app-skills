@@ -42,7 +42,13 @@ Check these files in the app:
 - [ ] `_meta.ui.csp.connectDomains` — declared but VS Code ignores these
 - [ ] Missing `RESOURCE_MIME_TYPE` on resource registration
 - [ ] Tools without text content fallback for non-UI hosts
-- [ ] `server.server.createMessage(...)` / `elicitInput(...)` / `resources/subscribe` **while** `main.ts` uses a stateless transport (`sessionIdGenerator: undefined`) — these server→client requests time out (`-32001`). Needs the stateful transport + a Display-Frame fallback. See `mcp-app-build/sampling.md`.
+- [ ] New code adopts deprecated `sampling/createMessage`, Roots, or MCP Logging
+  instead of the modern alternatives in `mcp-app-build/mcp-v2.md`.
+- [ ] A legacy `server.server.createMessage(...)` / `elicitInput(...)` /
+  `resources/subscribe` path uses a stateless v1 transport
+  (`sessionIdGenerator: undefined`) — the reverse request times out (`-32001`).
+  Keep the stateful transport inside the legacy adapter and ship a Display-Frame
+  fallback. This rule does not apply to modern MRTR.
 - [ ] Streamable HTTP without Origin validation, authentication or request/session limits
 - [ ] Server proxy tools accepting arbitrary URLs (SSRF)
 - [ ] OAuth callbacks without single-use `state` + PKCE bound to the initiating session
@@ -68,7 +74,8 @@ Check these files in the app:
 | Library uses eval internally | [RENDERING] | Breaking in VS Code |
 | No text fallback in tool result | [PROTOCOL] | Degraded in non-UI hosts |
 | CSP relaxation in `_meta` | [CSP] | Cosmetic (VS Code ignores it) |
-| Sampling/elicitation on stateless transport | [TRANSPORT] | Breaking — server→client request times out (-32001) |
+| Legacy sampling/elicitation on stateless v1 transport | [TRANSPORT] | Breaking — server→client request times out (-32001) |
+| Modern request requires hidden session state | [PROTOCOL] | Breaking — use MRTR or an explicit application handle |
 | VS Code sampling capability without per-server authorization | [PERMISSION] | Degraded — host resolves sampling as cancelled |
 | Sampling cancellation applied as model output | [PROTOCOL] | Breaking — corrupts user/session state |
 | Same-origin active iframe content | [SECURITY] | Critical — host-origin compromise |

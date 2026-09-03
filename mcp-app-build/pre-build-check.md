@@ -86,12 +86,13 @@ For each planned feature, check against the host matrix:
 
 ### Server-Initiated Requests
 
-| Requirement | Sampling / elicitation / subscriptions |
+| Requirement | Modern `2026-07-28` | Legacy compatibility |
 |---|---|
-| Stateful Streamable HTTP transport | Required (`sessionIdGenerator` + session map) |
-| Negotiated host capability | Required |
-| VS Code per-server sampling authorization | Required for sampling |
-| Type A fallback | Required |
+| Mid-call input | MRTR: `input_required`, `inputResponses`, protected `requestState` | Negotiated server→client request |
+| Cross-call state | Explicit opaque application handle | May depend on a bounded sessionful adapter |
+| Host Sampling | Do not adopt for new work; prefer a direct model connection | Stateful/bidirectional transport plus host authorization |
+| Subscriptions | `subscriptions/listen` | Older resource-subscription transport |
+| Type A fallback | Required where the interaction is optional | Required |
 
 If an MCP App button calls a tool that then calls
 `sampling/createMessage`, VS Code classifies that model request as
@@ -129,7 +130,9 @@ Needs browser permission (mic/camera/geo)?
   └─ YES → Build fallback UI + runtime HostCapabilities check
 
 Server calls sampling/createMessage?
-  └─ YES → Stateful transport + negotiated capability + host authorization
+  └─ YES → Is this an explicit legacy compatibility requirement?
+       └─ NO  → Use a direct model connection or modern MRTR-supported input flow
+       └─ YES → Stateful transport + negotiated capability + host authorization
        └─ VS Code App button → allowedOutsideChat: true for exact server entry
 
 Everything bundleable + data-driven + server-proxied?

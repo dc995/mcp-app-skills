@@ -24,21 +24,34 @@ Every MCP App has two halves:
 Host calls tool → Server returns result → Host renders resource UI → UI receives result
 ```
 
-## Pick a Frame Type first
+## Pick a protocol profile first
+
+For new work, use MCP `2026-07-28` and the SDK v2 package split. Modern requests
+are self-contained: no core `initialize` handshake and no `Mcp-Session-Id`.
+Read [mcp-v2.md](mcp-v2.md) before selecting a transport or application-state
+strategy.
+
+Keep the MCP Apps iframe `ui/initialize` lifecycle separate from the MCP core
+profile. If a current extension dependency still requires SDK v1, isolate it in
+a bounded compatibility adapter rather than making sessionful v1 behavior the
+app architecture.
+
+## Pick an interaction shape
 
 Before scaffolding, decide which of two shapes your app is — it determines the
 transport and whether you depend on host capabilities.
 
 | | **Type A — Display Frame** (default, ~90%) | **Type B — Interactive / Agentic Frame** |
 |---|---|---|
-| Behavior | Tool in → content + UI out. No server-initiated traffic. | Server calls **back** into the client mid-tool. |
-| Triggers | — | `sampling/createMessage`, `elicitation/create`, resource subscriptions, cross-call progress |
-| Transport | **Stateless** (`sessionIdGenerator: undefined`) | **Stateful** (`sessionIdGenerator: () => randomUUID()` + session map) |
-| Host dependency | None beyond tools/resources | Host must advertise the capability and may require per-server authorization; **always ship a Type A fallback** |
-| Guide | this skill + [scaffold.md](scaffold.md) | [sampling.md](sampling.md) |
+| Behavior | Tool in → content + UI out. | A call needs user/model input, subscriptions, or explicit cross-call state. |
+| Modern `2026-07-28` | Stateless request/response. | MRTR (`input_required` + retry), `subscriptions/listen`, or explicit application handles. |
+| Legacy compatibility | Stateless v1 can serve display-only tools. | Sessionful v1 may be required for `sampling/createMessage`, `elicitation/create`, or old subscriptions. |
+| Host dependency | None beyond tools/resources. | Detect negotiated extension/capability support and always ship a Type A fallback. |
+| Guide | this skill + [scaffold.md](scaffold.md) | [mcp-v2.md](mcp-v2.md) and [sampling.md](sampling.md) |
 
-**Rule of thumb:** any server→client *request* (not just a notification) ⇒ Type B
-/ stateful. If your tools only return content, you are Type A — stay there.
+**Rule of thumb:** modern interaction does not imply a hidden transport session.
+Use MRTR for input needed during one call and an explicit handle for state across
+calls. Use a session map only inside a declared legacy compatibility profile.
 
 For VS Code sampling, capability negotiation is necessary but not sufficient:
 authorize the exact server under `chat.mcp.serverSampling`. App-button requests
@@ -49,8 +62,9 @@ need `allowedOutsideChat`; validate other invocation contexts separately.
 | File | Purpose |
 |---|---|
 | [pre-build-check.md](pre-build-check.md) | **Run first** — safety gate vs host capabilities |
+| [mcp-v2.md](mcp-v2.md) | MCP `2026-07-28`, SDK v2, stateless requests, MRTR, handles, caching, auth and migration |
 | [scaffold.md](scaffold.md) | Project structure, deps, vite config, main.ts/server.ts templates (stateless + stateful) |
-| [sampling.md](sampling.md) | **Frame Type B** — sampling/elicitation/subscriptions, stateful transport, graceful degradation |
+| [sampling.md](sampling.md) | Modern alternatives plus bounded legacy sampling/elicitation behavior |
 | [patterns.md](patterns.md) | SDK lifecycle, handlers, data-driven rendering, host styling |
 | [references/sdk-api.md](references/sdk-api.md) | App class, registerAppTool, registerAppResource quick-ref |
 

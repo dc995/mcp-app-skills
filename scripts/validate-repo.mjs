@@ -86,6 +86,106 @@ JSON.parse(
 
 const samplingGuidePath = path.join(ROOT, "mcp-app-build", "sampling.md");
 const samplingGuide = await readFile(samplingGuidePath, "utf-8");
+const mcpV2GuidePath = path.join(ROOT, "mcp-app-build", "mcp-v2.md");
+let mcpV2Guide = "";
+try {
+  mcpV2Guide = await readFile(mcpV2GuidePath, "utf-8");
+} catch {
+  fail(mcpV2GuidePath, "missing canonical MCP 2026-07-28 guidance");
+}
+for (const requiredGuidance of [
+  "2026-07-28",
+  "server/discover",
+  "MCP-Protocol-Version",
+  "Mcp-Method",
+  "input_required",
+  "requestState",
+  "cacheScope",
+  'cacheScope: "public" | "private"',
+  "Realm is an application/deployment security-domain abstraction, not an MCP",
+  "never trust a caller-supplied Realm label",
+  "ui/initialize",
+]) {
+  if (!mcpV2Guide.includes(requiredGuidance)) {
+    fail(mcpV2GuidePath, `MCP v2 guidance must include: ${requiredGuidance}`);
+  }
+}
+if (!/legacy|compatibility/i.test(mcpV2Guide)) {
+  fail(mcpV2GuidePath, "MCP v2 guidance must define a bounded legacy compatibility path");
+}
+for (const cacheableOperation of [
+  "server/discover",
+  "tools/list",
+  "prompts/list",
+  "resources/list",
+  "resources/templates/list",
+  "resources/read",
+]) {
+  if (!mcpV2Guide.includes(`- \`${cacheableOperation}\``)) {
+    fail(mcpV2GuidePath, `cache contract must require hints for: ${cacheableOperation}`);
+  }
+}
+for (const mrtrRequirement of [
+  "fulfill the",
+  "inputRequests",
+  "inputResponses",
+  "exact `requestState`",
+  "complete result from",
+  "clients MUST NOT cache a result produced from a request carrying",
+]) {
+  if (!mcpV2Guide.includes(mrtrRequirement)) {
+    fail(mcpV2GuidePath, `modern MRTR guidance must include: ${mrtrRequirement}`);
+  }
+}
+const scaffoldGuidePath = path.join(ROOT, "mcp-app-build", "scaffold.md");
+const scaffoldGuide = await readFile(scaffoldGuidePath, "utf-8");
+for (const requiredGuidance of [
+  'McpServer } from "@modelcontextprotocol/server"',
+  'McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"',
+  "createModernServer",
+  "createLegacyAppServer",
+]) {
+  if (!scaffoldGuide.includes(requiredGuidance)) {
+    fail(scaffoldGuidePath, `modern scaffold contract must include: ${requiredGuidance}`);
+  }
+}
+if (!/createMcpHandler\(\(\)\s*=>\s*createModernServer\(\)/m.test(scaffoldGuide)) {
+  fail(scaffoldGuidePath, "modern HTTP handler must create an SDK v2 server");
+}
+if (!/never pass a v1 `McpServer` object to a v2\s+handler/i.test(scaffoldGuide)) {
+  fail(scaffoldGuidePath, "scaffold must prohibit mixing v1 and v2 server objects");
+}
+if (!/createLegacyAppServer\(\)\.connect\(new StdioServerTransport\(\)\)/m.test(scaffoldGuide)) {
+  fail(scaffoldGuidePath, "legacy stdio entry point must use the v1 app server factory");
+}
+const serverApiGuidePath = path.join(ROOT, "mcp-app-test", "server-api.md");
+const serverApiGuide = await readFile(serverApiGuidePath, "utf-8");
+for (const requiredGuidance of [
+  '"MCP-Protocol-Version": "2026-07-28"',
+  '"Mcp-Method": method',
+  '"Mcp-Name": encodeMcpHeaderValue(name)',
+  "typeof params.name",
+  "typeof params.uri",
+  "=?base64?",
+  "Mcp-Param-*",
+]) {
+  if (!serverApiGuide.includes(requiredGuidance)) {
+    fail(serverApiGuidePath, `modern request guidance must include: ${requiredGuidance}`);
+  }
+  const copilotHostGuidePath = path.join(ROOT, "mcp-app-hosts", "copilot-sdk-host.md");
+  const copilotHostGuide = await readFile(copilotHostGuidePath, "utf-8");
+  for (const requiredGuidance of [
+    "## Modern MRTR Sampling fulfillment",
+    'result.resultType !== "input_required"',
+    "inputResponses",
+    "## Legacy v1 Sampling bridge",
+    "only for a v1 compatibility adapter",
+  ]) {
+    if (!copilotHostGuide.includes(requiredGuidance)) {
+      fail(copilotHostGuidePath, `host Sampling guidance must include: ${requiredGuidance}`);
+    }
+  }
+}
 for (const requiredGuidance of [
   "chat.mcp.serverSampling",
   "allowedOutsideChat",
@@ -101,6 +201,17 @@ for (const requiredGuidance of [
 }
 if (!samplingGuide.includes("## The three requirements")) {
   fail(samplingGuidePath, "sampling guide must retain its three-requirement structure");
+}
+if (
+  !samplingGuide.includes("2026-07-28") ||
+  !samplingGuide.includes("MRTR may embed a deprecated Sampling request") ||
+  !samplingGuide.includes("unsolicited reverse channel") ||
+  !samplingGuide.includes("stateful transport")
+) {
+  fail(
+    samplingGuidePath,
+    "sampling guidance must distinguish modern MRTR/direct-provider behavior from legacy sampling",
+  );
 }
 
 const vscode = hostMatrix.hosts?.vscode;

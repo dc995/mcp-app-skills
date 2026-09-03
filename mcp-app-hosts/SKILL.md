@@ -38,15 +38,17 @@ accessibility and security behavior are recorded through
 | Elicitation (`elicitInput`) | Unvalidated | **NO** | Unvalidated | **NO** |
 <!-- END GENERATED HOST SUMMARY -->
 
-**Server-initiated requests** (sampling, elicitation, resource subscriptions)
-require a **stateful** server transport (`sessionIdGenerator: randomUUID`) — the
-default stateless transport silently times them out. They also require the host's
-MCP *client* to advertise the capability and may require host-specific
-authorization. In VS Code, App-button sampling requires the exact server entry
-under `chat.mcp.serverSampling` with `allowedOutsideChat: true`; other invocation
-contexts require separate validation. See `host-matrix.json`
-(`server-initiated` block) and `mcp-app-build/sampling.md`. Always ship a Display‑Frame
-fallback so the app degrades where the host can't sample/elicit.
+The generated Sampling/Elicitation rows are dated host observations for the
+legacy server-initiated APIs. In that compatibility profile, reverse requests
+require a stateful/bidirectional transport, an advertised client capability, and
+possibly host-specific authorization. In VS Code, App-button sampling requires
+the exact server entry under `chat.mcp.serverSampling` with
+`allowedOutsideChat: true`.
+
+For new MCP `2026-07-28` work, use MRTR, `subscriptions/listen`, explicit
+application handles, or a direct model-provider connection as appropriate. See
+`mcp-app-build/mcp-v2.md` and `mcp-app-build/sampling.md`. Always ship a
+Display-Frame fallback where the interactive behavior is optional.
 
 **Media in VS Code**: `media-src 'self'` blocks external audio/video URLs and the
 sandboxed iframe gets no `autoplay` / Web Speech grant. The `_meta.ui.csp` /

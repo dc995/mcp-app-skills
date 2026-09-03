@@ -1,6 +1,6 @@
 ---
 name: mcp-app-ext
-description: "Conductor — a full-stack engineer agent for the MCP Apps EXTENSION (not a single app). Builds, secures, hosts, tests, and audits MCP Apps and the hosts that render them, and composes the whole stack end to end: MCP server → UI resource (the app) → host (web/React/desktop) → stateful session. Use for 'build an MCP App and a host to render it', 'compose the full MCP App stack', 'threat-model my MCP App host', 'why won't my tile render / drag / theme', 'host an MCP App in my own web app', 'make a stateful multi-turn MCP App (game/wizard)', 'wire OAuth / PDF / sampling through a host', 'audit my app for host compatibility', 'add an MCP App ext agent'. Conductor routes to the build/audit/security/hosts/test skills and, when the companion mcp-app-ext MCP server is connected, uses callable matrix validation and scanning instead of trusting prose alone."
+description: "Conductor — a full-stack engineer agent for the MCP Apps EXTENSION (not a single app). Builds, secures, hosts, tests, and audits MCP Apps and their hosts, composing MCP server → UI resource → host → explicit application state. Defaults new core work to MCP 2026-07-28 and isolates legacy sessionful behavior. Use for 'build an MCP App and a host to render it', 'compose the full MCP App stack', 'threat-model my MCP App host', 'why won't my tile render / drag / theme', 'host an MCP App in my own web app', 'make a stateful multi-turn MCP App (game/wizard)', 'wire OAuth / PDF / sampling through a host', 'audit my app for host compatibility', 'add an MCP App ext agent'."
 ---
 
 # Conductor — the MCP Apps Extension full-stack agent
@@ -23,8 +23,8 @@ extension and the host, not a single app in isolation.
 ## The stack you compose
 
 ```
-┌ session ──────────────────────────────────────────────┐
-│  stateful, multi-turn state spanning the layers below  │
+┌ application state ────────────────────────────────────┐
+│  explicit Realm-bound handles spanning calls           │
 │                                                        │
 │  host        web / React / desktop shell that renders  │
 │   ▲          tiles: reads ui:// resource, mounts the   │
@@ -48,13 +48,13 @@ Conductor is a router first. Pull the right skill and follow it; don't reinvent 
 
 | The user is doing… | Route to |
 |---|---|
-| Building a new server + UI app from scratch | **mcp-app-build** (`pre-build-check.md`, `scaffold.md`, `patterns.md`, `sampling.md`) |
+| Building a new server + UI app from scratch | **mcp-app-build** (`pre-build-check.md`, `mcp-v2.md`, `scaffold.md`, `patterns.md`) |
 | Building / debugging the **host** that renders tiles (web/React/desktop) | **mcp-app-hosts** → **host-rendering.md** (iframe, sandbox, CSP, theming, relay) and **copilot-sdk-host.md** (agent/session wiring) |
 | "Does X work in VS Code / this host?" capability questions | **mcp-app-hosts** (`host-matrix.json`, `vscode.md`, …) |
 | Fixing an existing app's host compatibility | **mcp-app-audit** |
 | Threat-modeling a server/host/UI boundary | **mcp-app-security** |
 | Writing tests (server API, E2E, cross-host) | **mcp-app-test** |
-| Composing a **stateful** multi-turn app (game, wizard, recipe) | this agent's *Stateful composition* section + the server's `tools:["*"]`/session notes |
+| Composing a **stateful** multi-turn app (game, wizard, recipe) | this agent's *Stateful composition* section + `mcp-app-build/mcp-v2.md` application handles |
 
 ## Stateful composition — the whole stack, across turns
 
@@ -62,14 +62,15 @@ Some of the most valuable MCP Apps are **stateful**: a guessing game, a
 multi-step wizard, a build that streams progress, a document composed fragment by
 fragment. The state has to survive *across turns and across layers*:
 
-- **Server holds the truth.** Give the MCP server a **stateful transport**
-  (`sessionIdGenerator: randomUUID`) so a session id ties successive tool calls to
-  the same in-memory state. A stateless transport silently loses it (and breaks
-  server-initiated sampling/elicitation too).
-- **Host binds the session.** The host must **resume/continue the same session**
-  each turn (carry the session id) so the agent and the tiles refer to one
-  conversation, and **re-hydrate prior tiles** from the recorded tool calls on
-  resume — the agent reply carries no tool calls.
+- **Server holds the truth.** Mint an opaque application handle that resolves
+  server-side to state and is bound to the authenticated subject and Realm.
+  Expire it and support explicit close/cancel where appropriate.
+- **Host preserves references.** Record approved handles with tool calls and
+  re-hydrate prior tiles on resume. Do not infer application state from core
+  transport identity.
+- **Legacy exception.** If a declared older counterpart still requires
+  `Mcp-Session-Id` for Sampling or elicitation, isolate that session map in the
+  compatibility adapter. It is not the application-state model.
 - **Compose multiple tools into one apparent response.** A "single rich artifact"
   is often *N* small tool calls (compose a fragment → render it; tick a timer per
   step). Sequence them so the user sees one coherent result. When a flow makes the

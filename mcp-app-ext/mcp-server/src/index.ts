@@ -41,6 +41,7 @@ const SCAN_ROOTS = parseScanRoots(
 
 const GUIDANCE_FILES: Record<string, string> = {
   build: "mcp-app-build/SKILL.md",
+  "mcp-v2": "mcp-app-build/mcp-v2.md",
   "pre-build-check": "mcp-app-build/pre-build-check.md",
   scaffold: "mcp-app-build/scaffold.md",
   patterns: "mcp-app-build/patterns.md",
@@ -345,10 +346,10 @@ server.registerTool(
   },
   async ({ layer }) => {
     const map: Record<string, { from: string; note: string }> = {
-      server: { from: "mcp-app-build/scaffold.md", note: "MCP server: secure transport boundary + tool + ui:// resource; stateful transport if required." },
+      server: { from: "mcp-app-build/scaffold.md", note: "MCP server: modern stateless core by default; isolate any sessionful v1 transport in a legacy adapter." },
       app: { from: "mcp-app-build/scaffold.md", note: "UI resource (main.ts/html): consume host styles, data-driven render, single-file bundle." },
       host: { from: "mcp-app-hosts/host-rendering.md", note: "Web/React host: different-origin sandbox, CSP, dual _meta read, theming, validated bridge." },
-      session: { from: "mcp-app-hosts/copilot-sdk-host.md", note: "Bind & resume a session; re-hydrate tiles; host-side handle-relay repair." },
+      session: { from: "mcp-app-build/mcp-v2.md", note: "Use explicit Realm-bound application handles for cross-call state; do not recover state from protocol-session identity." },
     };
     const entry = map[layer];
     const p = path.join(SKILLS_ROOT, entry.from);
