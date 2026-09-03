@@ -2,10 +2,14 @@ import { spawnSync } from "node:child_process";
 
 const ALLOWED_ADVISORIES = new Set([
   "https://github.com/advisories/GHSA-frvp-7c67-39w9",
+  "https://github.com/advisories/GHSA-x5fp-wj9c-mxmx",
+  "https://github.com/advisories/GHSA-4mjr-xmp4-gh2g",
 ]);
 const ALLOWED_CHAIN = new Set([
   "@hono/node-server",
   "@modelcontextprotocol/sdk",
+  "body-parser",
+  "qs",
 ]);
 
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
@@ -48,9 +52,9 @@ if (unexpected.length > 0) {
 
 if (vulnerabilities.length > 0) {
   console.warn(
-    "Allowed advisory GHSA-frvp-7c67-39w9 remains in @modelcontextprotocol/sdk's " +
-      "@hono/node-server dependency. This stdio server does not expose serve-static; " +
-      "review the exception when the SDK permits @hono/node-server >=2.0.5.",
+    "Allowlisted transitive advisories remain in dependencies that are not exposed by " +
+      "this stdio-only server. Review the exceptions whenever the MCP SDK or patched " +
+      "qs/body-parser releases become available.",
   );
 }
 

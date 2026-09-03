@@ -101,7 +101,9 @@ for (const requiredGuidance of [
   "input_required",
   "requestState",
   "cacheScope",
-  "Realm",
+  'cacheScope: "public" | "private"',
+  "Realm is an application/deployment security-domain abstraction, not an MCP",
+  "never trust a caller-supplied Realm label",
   "ui/initialize",
 ]) {
   if (!mcpV2Guide.includes(requiredGuidance)) {
@@ -110,6 +112,30 @@ for (const requiredGuidance of [
 }
 if (!/legacy|compatibility/i.test(mcpV2Guide)) {
   fail(mcpV2GuidePath, "MCP v2 guidance must define a bounded legacy compatibility path");
+}
+for (const cacheableOperation of [
+  "server/discover",
+  "tools/list",
+  "prompts/list",
+  "resources/list",
+  "resources/templates/list",
+  "resources/read",
+]) {
+  if (!mcpV2Guide.includes(`- \`${cacheableOperation}\``)) {
+    fail(mcpV2GuidePath, `cache contract must require hints for: ${cacheableOperation}`);
+  }
+}
+for (const mrtrRequirement of [
+  "fulfill the",
+  "inputRequests",
+  "inputResponses",
+  "exact `requestState`",
+  "complete result from",
+  "clients MUST NOT cache a result produced from a request carrying",
+]) {
+  if (!mcpV2Guide.includes(mrtrRequirement)) {
+    fail(mcpV2GuidePath, `modern MRTR guidance must include: ${mrtrRequirement}`);
+  }
 }
 const scaffoldGuidePath = path.join(ROOT, "mcp-app-build", "scaffold.md");
 const scaffoldGuide = await readFile(scaffoldGuidePath, "utf-8");
@@ -145,6 +171,19 @@ for (const requiredGuidance of [
 ]) {
   if (!serverApiGuide.includes(requiredGuidance)) {
     fail(serverApiGuidePath, `modern request guidance must include: ${requiredGuidance}`);
+  }
+  const copilotHostGuidePath = path.join(ROOT, "mcp-app-hosts", "copilot-sdk-host.md");
+  const copilotHostGuide = await readFile(copilotHostGuidePath, "utf-8");
+  for (const requiredGuidance of [
+    "## Modern MRTR Sampling fulfillment",
+    'result.resultType !== "input_required"',
+    "inputResponses",
+    "## Legacy v1 Sampling bridge",
+    "only for a v1 compatibility adapter",
+  ]) {
+    if (!copilotHostGuide.includes(requiredGuidance)) {
+      fail(copilotHostGuidePath, `host Sampling guidance must include: ${requiredGuidance}`);
+    }
   }
 }
 for (const requiredGuidance of [

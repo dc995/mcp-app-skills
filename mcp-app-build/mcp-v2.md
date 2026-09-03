@@ -45,11 +45,27 @@ negotiation only at an explicit compatibility boundary.
 
 ## Cache metadata, not protocol sessions
 
-List and discovery results can advertise `ttlMs` and `cacheScope`.
+Servers MUST include `ttlMs >= 0` and
+`cacheScope: "public" | "private"` on every `resultType: "complete"` result
+from:
 
-- Cache only safe discovery and list metadata.
+- `server/discover`
+- `tools/list`
+- `prompts/list`
+- `resources/list`
+- `resources/templates/list`
+- `resources/read`
+
+Interim `input_required` results carry no cache hints. A complete result from
+an MRTR retry still includes the cache fields required by its normal result
+schema, but clients MUST NOT cache a result produced from a request carrying
+`inputResponses` or `requestState`.
+
+- Cache only results whose method and result-affecting parameters match.
 - Honor the advertised TTL.
-- Partition private cache entries by authenticated principal and Realm.
+- Reuse private entries only within the same authorization context.
+- Where the application defines a Realm, partition private entries by both the
+  authorization context and Realm.
 - Never share backend URLs, credentials, private capabilities, or private
   results across Realm partitions.
 - A fresh request transport is not the same thing as re-fetching every
@@ -64,9 +80,11 @@ An application handle should:
 
 - contain no credentials or sensitive state;
 - resolve server-side to the real state;
-- bind to the authenticated subject and Realm;
+- bind to the authenticated subject and authorization context, plus the Realm
+  when the application uses one;
 - expire;
-- fail closed for missing, expired, cross-subject, or cross-Realm use;
+- fail closed for missing, expired, cross-subject, cross-authorization-context,
+  or cross-Realm use;
 - support explicit close or cancel where the workflow needs lifecycle control.
 
 Do not confuse application handles with MRTR `requestState`. Application handles
@@ -83,8 +101,9 @@ and optional `requestState`. The client obtains the required input and retries
 the original operation with `inputResponses`.
 
 - Treat `requestState` as untrusted client-carried data.
-- Integrity-protect it and bind it to the principal, Realm, method, relevant
-  parameters, phase, and expiry.
+- Integrity-protect it and bind it to the principal, authorization context,
+  method, relevant parameters, phase, and expiry. Include the Realm when the
+  application uses one.
 - Add replay or single-use controls where repeating the operation has effects.
 - Preserve cancellation and decline as normal outcomes when the workflow can
   continue safely.
@@ -101,8 +120,9 @@ Roots, Sampling, and MCP Logging are deprecated in `2026-07-28`.
 - Prefer an explicit model-provider connection for server-side model work.
   Do not create new strategic dependencies on `sampling/createMessage`.
   Modern MRTR may still embed a deprecated Sampling request; a client that
-  supports that compatibility path must advertise the capability and register
-  the corresponding handler before retrying the operation.
+  supports that compatibility path must advertise the capability, fulfill the
+  request from `inputRequests`, and retry the original operation with the
+  keyed result in `inputResponses` plus the exact `requestState`.
 - Use stderr for stdio diagnostics and OpenTelemetry or the environment's
   structured logging system instead of adopting MCP Logging.
 
@@ -116,14 +136,20 @@ fails.
 Model providers, data sources, and remote MCP servers are connections:
 source + transport/tool + credential reference + Realm.
 
+Realm is an application/deployment security-domain abstraction, not an MCP
+protocol field. Derive it server-side from trusted connection and
+authentication configuration; never trust a caller-supplied Realm label.
+
 The app declares what it needs. The connection resolves credentials at the
 edge. Secret bytes never enter prompts, tool arguments, UI state, logs, cache
 keys, application handles, or `requestState`.
 
 ## Authorization and observability
 
-- Authorize the trusted principal and Realm before backend discovery, cache
-  lookup, connection creation, or tool execution.
+- Authorize the trusted principal and authorization context before backend
+  discovery, cache lookup, connection creation, or tool execution. If the
+  application uses Realms, enforce the trusted server-derived Realm boundary
+  as an additional partition.
 - Validate OAuth issuer information and bind client registrations and tokens to
   the issuer that created them.
 - Prefer Client ID Metadata Documents; keep Dynamic Client Registration only as
